@@ -53,8 +53,8 @@ class ManualRouteCreator:
         # Setup the figure and plot
         self.fig, self.ax = plt.subplots(figsize=(12, 10))
         
-        # To prevent duplicate colorbars
-        self.colorbar = None
+        # Track created colorbars to prevent duplicates
+        self.current_cbar = None
         
         self.setup_plot()
         
@@ -82,27 +82,22 @@ class ManualRouteCreator:
     
     def setup_plot(self):
         """Initial plot setup."""
-        # Clear any existing axes to prevent duplicate colorbars
+        # Clear any existing axes
         self.ax.clear()
         
         # Remove existing colorbar if it exists
-        if self.colorbar is not None:
-            self.colorbar.remove()
+        if hasattr(self, 'cbar') and self.cbar is not None:
+            self.cbar.remove()
+            self.cbar = None
         
         # Draw the grid and currents
-        self.plot = plot_navigation_grid(
+        plot_navigation_grid(
             self.nav_grid,
             ax=self.ax,
             show_obstacles=True,
             show_currents=True,
             title=f"Click to create Manual Route {self.route_index}"
         )
-        
-        # Capture the colorbar references from the plot
-        for child in self.ax.get_children():
-            if isinstance(child, plt.cm.ScalarMappable):
-                self.colorbar = child
-                break
         
         # Plot the demo start and end points
         start_x, start_y = self.nav_grid.cell_to_coords(*self.demo_start)
@@ -190,8 +185,9 @@ class ManualRouteCreator:
         self.ax.clear()
         
         # Remove existing colorbar if it exists
-        if self.colorbar is not None:
-            self.colorbar.remove()
+        if hasattr(self, 'cbar') and self.cbar is not None:
+            self.cbar.remove()
+            self.cbar = None
         
         # Draw navigation grid
         plot_navigation_grid(
@@ -201,12 +197,6 @@ class ManualRouteCreator:
             show_currents=True,
             title=f"Manual Route {self.route_index} ({len(self.current_route)} waypoints)"
         )
-        
-        # Capture the colorbar references from the plot
-        for child in self.ax.get_children():
-            if isinstance(child, plt.cm.ScalarMappable):
-                self.colorbar = child
-                break
         
         # Plot the demo start and end points
         start_x, start_y = self.nav_grid.cell_to_coords(*self.demo_start)
