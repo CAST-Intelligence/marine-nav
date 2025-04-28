@@ -167,17 +167,22 @@ def generate_expanding_square_pattern(
 def generate_sector_search_pattern(
     center: Tuple[int, int],
     max_distance: int,
-    num_legs: int = 9,
-    orientation: float = 0.0
+    num_triangles: int = 6,
+    initial_orientation: float = 0.0,
+    triangle_angle: float = np.pi/3  # 60 degrees
 ) -> List[Tuple[int, int]]:
     """
-    Generate a sector search pattern.
+    Generate a sector search pattern following IAMSAR guidelines.
+    
+    The sector search pattern consists of triangular sweeps from a datum point,
+    with each triangle being rotated to eventually cover a full circular area.
     
     Args:
-        center: Center point of the pattern as (x, y) cell coordinates
+        center: Center point (datum) of the pattern as (x, y) cell coordinates
         max_distance: Maximum distance from center in grid cells
-        num_legs: Number of legs in the pattern (should be odd)
-        orientation: Orientation angle in radians
+        num_triangles: Number of triangular sweeps to cover the area
+        initial_orientation: Initial orientation angle in radians
+        triangle_angle: Angle of each triangular sector in radians (default 60°)
         
     Returns:
         List of (x, y) cell coordinates forming the pattern
@@ -186,26 +191,31 @@ def generate_sector_search_pattern(
     
     cx, cy = center
     
-    # Ensure odd number of legs
-    if num_legs % 2 == 0:
-        num_legs += 1
+    # Calculate rotation angle between triangular sweeps
+    rotation_step = 2 * np.pi / num_triangles
     
-    # Angle between legs
-    angle_step = 2 * np.pi / num_legs
-    
-    for leg in range(num_legs):
-        angle = orientation + leg * angle_step
+    # For each triangular sweep
+    for sweep in range(num_triangles):
+        sweep_orientation = initial_orientation + sweep * rotation_step
         
-        # Calculate end point for this leg
-        ex = int(cx + max_distance * np.cos(angle))
-        ey = int(cy + max_distance * np.sin(angle))
+        # First leg - outbound on initial heading
+        angle1 = sweep_orientation
+        endpoint1_x = int(cx + max_distance * np.cos(angle1))
+        endpoint1_y = int(cy + max_distance * np.sin(angle1))
         
-        # Generate line of points along the leg
-        points = line_points(cx, cy, ex, ey)
-        path.extend(points)
+        # Add points along the first leg
+        path.extend(line_points(cx, cy, endpoint1_x, endpoint1_y))
         
-        # Return to center for next leg
-        path.append(center)
+        # Second leg - turn by triangle_angle and head back to center
+        angle2 = angle1 + triangle_angle
+        midpoint_x = int(cx + max_distance * np.cos(angle2))
+        midpoint_y = int(cy + max_distance * np.sin(angle2))
+        
+        # Add points along the second leg
+        path.extend(line_points(endpoint1_x, endpoint1_y, midpoint_x, midpoint_y))
+        
+        # Third leg - back to center
+        path.extend(line_points(midpoint_x, midpoint_y, cx, cy))
     
     return path
 

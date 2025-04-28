@@ -110,7 +110,7 @@ def main():
     # Sector search
     sector_center = (70, 40)
     sector_pattern = generate_sector_search_pattern(
-        sector_center, max_distance=12, num_legs=7, orientation=0.2
+        sector_center, max_distance=12, num_triangles=6, initial_orientation=0.2, triangle_angle=np.pi/3
     )
     
     # Parallel search
