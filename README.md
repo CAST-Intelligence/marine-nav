@@ -38,7 +38,7 @@ The application can be run with various demo modes:
 Shows a sample vector field with currents and obstacles:
 
 ```
-python main.py vector-field-demo
+uv run main.py vector-field-demo
 ```
 
 ### Path Planning Demo
@@ -46,7 +46,7 @@ python main.py vector-field-demo
 Demonstrates current-aware path planning compared to standard path planning:
 
 ```
-python main.py path-planning-demo
+uv run main.py path-planning-demo
 ```
 
 ## Project Structure
