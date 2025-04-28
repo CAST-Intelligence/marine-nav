@@ -25,34 +25,40 @@ def create_test_current_field():
     grid_size = (100, 100)
     vf = VectorField(grid_size, x_range=(0, 10), y_range=(0, 10))
     
-    # Create some interesting current patterns
+    # Create some interesting current patterns with increased strength
     def u_func(x, y):
-        # Circular vortex at (3, 7)
+        # Circular vortex at (3, 7) - stronger rotation
         dx1 = x - 3
         dy1 = y - 7
         dist1 = np.sqrt(dx1**2 + dy1**2)
         vortex = 0
         if dist1 > 0.1:
-            vortex = -0.3 * dy1 / dist1 * np.exp(-0.1 * dist1)
+            vortex = -0.8 * dy1 / dist1 * np.exp(-0.1 * dist1)
         
-        # Channel flow from left to right
-        channel = 0.2 * np.exp(-(y - 5)**2 / 2)
+        # Strong channel flow from left to right
+        channel = 0.6 * np.exp(-(y - 5)**2 / 2)
         
-        return vortex + channel
+        # Add a small counter-current in the upper area
+        counter = -0.3 * np.exp(-(y - 8)**2 / 1)
+        
+        return vortex + channel + counter
     
     def v_func(x, y):
-        # Circular vortex at (3, 7)
+        # Circular vortex at (3, 7) - stronger rotation
         dx1 = x - 3
         dy1 = y - 7
         dist1 = np.sqrt(dx1**2 + dy1**2)
         vortex = 0
         if dist1 > 0.1:
-            vortex = 0.3 * dx1 / dist1 * np.exp(-0.1 * dist1)
+            vortex = 0.8 * dx1 / dist1 * np.exp(-0.1 * dist1)
         
-        # Add a vertical component in one area
-        vertical = 0.1 * np.exp(-(x - 7)**2 / 1) * np.exp(-(y - 4)**2 / 1)
+        # Add a stronger vertical component in one area
+        vertical = 0.4 * np.exp(-(x - 7)**2 / 1) * np.exp(-(y - 4)**2 / 1)
         
-        return vortex + vertical
+        # Add a diagonal flow component in the bottom right
+        diagonal = 0.3 * np.exp(-(x - 8)**2 / 4) * np.exp(-(y - 2)**2 / 4)
+        
+        return vortex + vertical + diagonal
     
     vf.generate_from_function(u_func, v_func)
     
@@ -85,7 +91,7 @@ def main():
     goal = (85, 30)   # Bottom right
     
     # Plan a path using A* that accounts for currents
-    usv_speed = 0.5  # m/s
+    usv_speed = 0.7  # m/s - set speed comparable to currents to make effect more obvious
     
     # Find path with and without considering currents
     path_with_currents = a_star_current_aware(
@@ -132,7 +138,7 @@ def main():
         path=path_with_currents,
         start_point=start,
         end_point=goal,
-        title="A* Path Planning With Current Awareness"
+        title="Energy-Efficient Path With Current Awareness\n(Works with favorable currents, avoids unfavorable ones)"
     )
     
     plot_navigation_grid(
@@ -143,7 +149,7 @@ def main():
         path=path_without_currents,
         start_point=start,
         end_point=goal,
-        title="A* Path Planning Without Current Awareness"
+        title="Shortest Distance Path Ignoring Currents\n(Likely higher energy consumption)"
     )
     
     # Plot search patterns
@@ -154,7 +160,7 @@ def main():
         show_currents=True,
         path=square_pattern + sector_pattern,
         start_point=square_center,
-        title="Search Patterns: Expanding Square and Sector Search"
+        title="IAMSAR Search Patterns: Expanding Square and Sector Search\n(Obstacle-aware with pattern integrity preservation)"
     )
     
     plot_navigation_grid(
@@ -164,7 +170,7 @@ def main():
         show_currents=True,
         path=parallel_pattern,
         start_point=parallel_start,
-        title="Search Pattern: Parallel Search"
+        title="IAMSAR Search Pattern: Parallel Search\n(Using geometric operations for complete area coverage)"
     )
     
     plt.tight_layout()
