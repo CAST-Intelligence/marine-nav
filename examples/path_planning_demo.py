@@ -165,7 +165,7 @@ def main():
         path=path_with_currents,
         start_point=start,
         end_point=goal,
-        title="Path Optimization Comparison\n(A*: Green circles, Dijkstra: Purple triangles, Energy-optimal: Orange squares)"
+        title="Path Optimization Comparison\n(A*: Green circles, Dijkstra: Purple triangles, Energy-optimal: Color-coded by power)"
     )
     
     # Add Dijkstra path in a different color with triangular markers
@@ -188,8 +188,13 @@ def main():
         ax_comparison.scatter(d_x, d_y, marker='^', color='purple', s=80, 
                             edgecolor='black', linewidth=0.5)
     
-    # Add Energy-optimized path with square markers
-    if energy_path:
+    # Add Energy-optimized path with color-coded square markers based on power level
+    if energy_path and power_settings:
+        # Create a colormap for power settings (0-100%)
+        import matplotlib.cm as cm
+        power_cmap = cm.get_cmap('plasma')
+        
+        # Line only (no markers) for the path
         # Convert to world coordinates for plotting
         energy_world_points = []
         for x, y in energy_path:
@@ -200,13 +205,38 @@ def main():
         e_x = [p[0] for p in energy_world_points]
         e_y = [p[1] for p in energy_world_points]
         
-        # Plot energy path with square markers
-        # Line only (no markers) for the path
-        ax_comparison.plot(e_x, e_y, '-', color='orange', linewidth=2, label='Energy-optimal path')
+        # Plot the path line
+        ax_comparison.plot(e_x, e_y, '-', color='black', linewidth=1.5, alpha=0.5, label='Energy-optimal path')
         
-        # Add square markers on top
-        ax_comparison.scatter(e_x, e_y, marker='s', color='orange', s=80, 
-                            edgecolor='black', linewidth=0.5)
+        # Add square markers with colors based on power level
+        for i in range(len(energy_path) - 1):
+            if i < len(power_settings):
+                # Get power setting for this segment
+                power = power_settings[i]
+                
+                # Normalize power to 0-1 for colormap
+                normalized_power = power / 100.0
+                
+                # Get color from colormap
+                color = power_cmap(normalized_power)
+                
+                # Get world coordinates for this point
+                x, y = energy_path[i]
+                world_x, world_y = nav_grid.cell_to_coords(x, y)
+                
+                # Plot square marker with power-based color (smaller size)
+                ax_comparison.scatter(world_x, world_y, marker='s', color=color, s=40, 
+                                    edgecolor='black', linewidth=0.5)
+        
+        # Add a colorbar to show power levels
+        sm = plt.cm.ScalarMappable(cmap=power_cmap, norm=plt.Normalize(0, 100))
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax_comparison, label='Power Level (%)', shrink=0.6)
+        
+        # Add a text label for the energy path
+        ax_comparison.text(0.05, 0.05, 'Energy-optimal path (colored squares = power level)', 
+                         transform=ax_comparison.transAxes, fontsize=10,
+                         bbox=dict(facecolor='white', alpha=0.7))
         
     # Update legend
     ax_comparison.legend(loc='lower right')
