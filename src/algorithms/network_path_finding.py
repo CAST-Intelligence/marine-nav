@@ -2,15 +2,17 @@
 Graph-based path planning using network topology for USV navigation.
 """
 from typing import List, Tuple, Dict, Optional
-import networkx as nx
 import numpy as np
+# Global import at the module level
+import networkx as nx
+
 from ..core.grid import NavigationGrid
 
 
 def build_graph_from_grid(
     grid: NavigationGrid, 
     usv_speed: float = 1.0
-) -> nx.DiGraph:
+):
     """
     Build a directed graph from a navigation grid, with edges in 8 directions
     and costs based on travel time accounting for currents.
@@ -22,6 +24,8 @@ def build_graph_from_grid(
     Returns:
         A NetworkX DiGraph representing the navigable grid
     """
+    # Ensure nx is imported even inside the function scope
+    import networkx as nx
     G = nx.DiGraph()
     
     # Get grid dimensions
@@ -88,6 +92,9 @@ def find_shortest_time_path(
     Returns:
         List of (x, y) cell coordinates forming the path
     """
+    # Ensure nx is imported even inside the function scope
+    import networkx as nx
+    
     # Build graph from grid
     G = build_graph_from_grid(grid, usv_speed)
     

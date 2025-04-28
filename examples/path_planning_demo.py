@@ -144,10 +144,10 @@ def main():
         path=path_with_currents,
         start_point=start,
         end_point=goal,
-        title="A* vs Dijkstra: Current-Aware Path Comparison\n(A*: Green, Dijkstra: Purple)"
+        title="A* vs Network Dijkstra: Energy-Efficient Path Comparison\n(A*: Green circles, Dijkstra: Purple triangles)"
     )
     
-    # Add Dijkstra path in a different color
+    # Add Dijkstra path in a different color with triangular markers
     if dijkstra_path:
         # Convert to world coordinates for plotting
         dijkstra_world_points = []
@@ -159,11 +159,16 @@ def main():
         d_x = [p[0] for p in dijkstra_world_points]
         d_y = [p[1] for p in dijkstra_world_points]
         
-        # Plot Dijkstra path
-        ax_comparison.plot(d_x, d_y, 'o-', color='purple', linewidth=2, markersize=4, label='Dijkstra')
+        # Plot Dijkstra path with triangular markers
+        # Line only (no markers) for the path
+        ax_comparison.plot(d_x, d_y, '-', color='purple', linewidth=2, label='Dijkstra (line)')
+        
+        # Add triangular markers on top
+        ax_comparison.scatter(d_x, d_y, marker='^', color='purple', s=80, 
+                            edgecolor='black', linewidth=0.5, label='Dijkstra (points)')
         
         # Update legend
-        ax_comparison.legend()
+        ax_comparison.legend(loc='lower right')
     
     plot_navigation_grid(
         nav_grid,
