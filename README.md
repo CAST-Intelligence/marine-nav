@@ -18,7 +18,7 @@ Algorithm prototyping for USV (Unmanned Surface Vehicle) Mission Route Planning,
 
 1. Clone the repository:
    ```
-   git clone <repository-url>
+   git clone https://github.com/CAST-Intelligence/marine-nav.git
    cd marine-nav
    ```
 
