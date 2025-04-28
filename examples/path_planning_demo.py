@@ -19,6 +19,7 @@ from src.algorithms.path_planning import (
     generate_parallel_search_pattern
 )
 from src.algorithms.network_path_finding import find_shortest_time_path
+from src.algorithms.energy_optimal_path import find_energy_optimal_path
 
 
 def create_test_current_field():
@@ -112,6 +113,26 @@ def main():
         nav_grid, start, goal, usv_speed=usv_speed
     )
     
+    # Use energy-optimized path planning
+    energy_path, power_settings = find_energy_optimal_path(
+        nav_grid, start, goal, max_speed=usv_speed, power_levels=6
+    )
+    
+    # Print power settings for energy-optimal path
+    if energy_path and power_settings:
+        print("\nEnergy-optimal path power settings:")
+        # Group consecutive identical power settings
+        current_power = power_settings[0]
+        count = 1
+        for power in power_settings[1:]:
+            if power == current_power:
+                count += 1
+            else:
+                print(f"  - {count} segments at {current_power}% power")
+                current_power = power
+                count = 1
+        print(f"  - {count} segments at {current_power}% power")
+    
     # Create IAMSAR-compliant search patterns with obstacle awareness
     # Expanding square (spiral pattern)
     square_center = (50, 70)
@@ -144,7 +165,7 @@ def main():
         path=path_with_currents,
         start_point=start,
         end_point=goal,
-        title="A* vs Network Dijkstra: Energy-Efficient Path Comparison\n(A*: Green circles, Dijkstra: Purple triangles)"
+        title="Path Optimization Comparison\n(A*: Green circles, Dijkstra: Purple triangles, Energy-optimal: Orange squares)"
     )
     
     # Add Dijkstra path in a different color with triangular markers
@@ -161,14 +182,34 @@ def main():
         
         # Plot Dijkstra path with triangular markers
         # Line only (no markers) for the path
-        ax_comparison.plot(d_x, d_y, '-', color='purple', linewidth=2, label='Dijkstra (line)')
+        ax_comparison.plot(d_x, d_y, '-', color='purple', linewidth=2, label='Time-optimal Dijkstra')
         
         # Add triangular markers on top
         ax_comparison.scatter(d_x, d_y, marker='^', color='purple', s=80, 
-                            edgecolor='black', linewidth=0.5, label='Dijkstra (points)')
+                            edgecolor='black', linewidth=0.5)
+    
+    # Add Energy-optimized path with square markers
+    if energy_path:
+        # Convert to world coordinates for plotting
+        energy_world_points = []
+        for x, y in energy_path:
+            world_x, world_y = nav_grid.cell_to_coords(x, y)
+            energy_world_points.append((world_x, world_y))
         
-        # Update legend
-        ax_comparison.legend(loc='lower right')
+        # Extract x and y coordinates
+        e_x = [p[0] for p in energy_world_points]
+        e_y = [p[1] for p in energy_world_points]
+        
+        # Plot energy path with square markers
+        # Line only (no markers) for the path
+        ax_comparison.plot(e_x, e_y, '-', color='orange', linewidth=2, label='Energy-optimal path')
+        
+        # Add square markers on top
+        ax_comparison.scatter(e_x, e_y, marker='s', color='orange', s=80, 
+                            edgecolor='black', linewidth=0.5)
+        
+    # Update legend
+    ax_comparison.legend(loc='lower right')
     
     plot_navigation_grid(
         nav_grid,
@@ -231,15 +272,71 @@ def main():
             
         return total_distance, total_time
     
+    # Define function to calculate energy consumption
+    def calculate_energy_consumption(path, grid, usv_speed):
+        """Calculate total energy consumption for a path using fixed speed."""
+        total_energy = 0.0
+        for i in range(len(path) - 1):
+            x1, y1 = path[i]
+            x2, y2 = path[i + 1]
+            
+            # Get world coordinates for current vector
+            wx1, wy1 = grid.cell_to_coords(x1, y1)
+            
+            # Calculate movement vector
+            dx = x2 - x1
+            dy = y2 - y1
+            dist = np.sqrt(dx**2 + dy**2)
+            if dist > 0:
+                movement_vector = (dx/dist, dy/dist)
+            else:
+                movement_vector = (0, 0)
+            
+            # Get current vector at this position
+            if grid.current_field:
+                current_u, current_v = grid.current_field.get_vector_at_position(wx1, wy1)
+                current_vector = (current_u, current_v)
+            else:
+                current_vector = (0, 0)
+            
+            # Calculate energy using cubic relationship with power
+            # Assume 100% power for fixed speed methods
+            segment_energy = 1.0 * ((usv_speed / max_speed) ** 3)
+            total_energy += segment_energy
+            
+        return total_energy
+    
+    # Fixed max speed for comparison
+    max_speed = 1.0
+    
     # Calculate metrics for A* path
     a_star_distance, a_star_time = calculate_path_metrics(
         path_with_currents, nav_grid, usv_speed
     )
+    a_star_energy = calculate_energy_consumption(path_with_currents, nav_grid, usv_speed)
     
     # Calculate metrics for Dijkstra path
     dijkstra_distance, dijkstra_time = calculate_path_metrics(
         dijkstra_path, nav_grid, usv_speed
     )
+    dijkstra_energy = calculate_energy_consumption(dijkstra_path, nav_grid, usv_speed)
+    
+    # Calculate metrics for energy-optimal path
+    if energy_path:
+        energy_distance, energy_time = calculate_path_metrics(
+            energy_path, nav_grid, usv_speed
+        )
+        
+        # For energy path, use the actual power settings for energy calculation
+        energy_optimal_energy = 0
+        for i, power in enumerate(power_settings):
+            if i < len(energy_path) - 1:
+                # Energy consumption is proportional to power^3
+                energy_optimal_energy += (power / 100.0) ** 3
+    else:
+        energy_distance = 0
+        energy_time = 0
+        energy_optimal_energy = 0
     
     # Calculate metrics for path without currents
     no_current_distance, _ = calculate_path_metrics(
@@ -247,8 +344,9 @@ def main():
     )
     
     print("Path planning with currents demonstration complete.")
-    print(f"A* Path: {len(path_with_currents)} cells, Distance: {a_star_distance:.2f}m, Time: {a_star_time:.2f}s")
-    print(f"Dijkstra Path: {len(dijkstra_path)} cells, Distance: {dijkstra_distance:.2f}m, Time: {dijkstra_time:.2f}s")
+    print(f"A* Path: {len(path_with_currents)} cells, Distance: {a_star_distance:.2f}m, Time: {a_star_time:.2f}s, Energy: {a_star_energy:.2f}")
+    print(f"Dijkstra Path: {len(dijkstra_path)} cells, Distance: {dijkstra_distance:.2f}m, Time: {dijkstra_time:.2f}s, Energy: {dijkstra_energy:.2f}")
+    print(f"Energy-optimal Path: {len(energy_path)} cells, Distance: {energy_distance:.2f}m, Time: {energy_time:.2f}s, Energy: {energy_optimal_energy:.2f}")
     print(f"Direct Path (ignoring currents): {len(path_without_currents)} cells, Distance: {no_current_distance:.2f}m")
 
 

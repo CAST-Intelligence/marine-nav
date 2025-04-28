@@ -172,7 +172,8 @@ class NavigationGrid:
         start_y: int, 
         end_x: int, 
         end_y: int, 
-        usv_speed: float = 1.0
+        usv_speed: float = 1.0,
+        return_distance: bool = False
     ) -> float:
         """
         Calculate the travel cost between two adjacent cells, accounting for currents.
@@ -183,9 +184,11 @@ class NavigationGrid:
             end_x: Ending x-coordinate in grid cells
             end_y: Ending y-coordinate in grid cells
             usv_speed: The speed of the USV in m/s
+            return_distance: If True, return (cost, effective_speed, distance)
             
         Returns:
-            The cost to travel between the cells
+            If return_distance is False: The cost to travel between the cells
+            If return_distance is True: Tuple of (cost, effective_speed, distance)
         """
         # Convert to world coordinates
         start_world_x, start_world_y = self.cell_to_coords(start_x, start_y)
@@ -198,7 +201,7 @@ class NavigationGrid:
         
         # If there's no current field, return the distance as cost
         if self.current_field is None:
-            return distance
+            return (distance, usv_speed, distance) if return_distance else distance
         
         # Get the current vector at the midpoint
         mid_x = (start_world_x + end_world_x) / 2
@@ -214,7 +217,7 @@ class NavigationGrid:
         
         # If current is zero, return the distance
         if current_speed < 1e-6:
-            return distance
+            return (distance, usv_speed, distance) if return_distance else distance
             
         current_vector = current_vector / current_speed
         
@@ -231,7 +234,10 @@ class NavigationGrid:
         # Cost is proportional to time = distance / speed
         cost = distance / effective_speed
         
-        return cost
+        if return_distance:
+            return cost, effective_speed, distance
+        else:
+            return cost
     
     def build_distance_matrix(self, usv_speed: float = 1.0) -> np.ndarray:
         """
