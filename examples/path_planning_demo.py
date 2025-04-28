@@ -18,6 +18,7 @@ from src.algorithms.path_planning import (
     generate_sector_search_pattern,
     generate_parallel_search_pattern
 )
+from src.algorithms.network_path_finding import find_shortest_time_path
 
 
 def create_test_current_field():
@@ -93,7 +94,7 @@ def main():
     # Plan a path using A* that accounts for currents
     usv_speed = 0.7  # m/s - set speed comparable to currents to make effect more obvious
     
-    # Find path with and without considering currents
+    # Find path with and without considering currents using A*
     path_with_currents = a_star_current_aware(
         nav_grid, start, goal, usv_speed=usv_speed
     )
@@ -105,6 +106,11 @@ def main():
         nav_grid, start, goal, usv_speed=usv_speed
     )
     nav_grid.current_field = temp_field
+    
+    # Use graph-based Dijkstra's algorithm for comparison with A*
+    dijkstra_path = find_shortest_time_path(
+        nav_grid, start, goal, usv_speed=usv_speed
+    )
     
     # Create IAMSAR-compliant search patterns with obstacle awareness
     # Expanding square (spiral pattern)
@@ -129,8 +135,8 @@ def main():
     # Plot the results
     fig, axes = plt.subplots(2, 2, figsize=(20, 16))
     
-    # Plot A* paths
-    plot_navigation_grid(
+    # Plot both A* and Dijkstra paths for comparison
+    ax_comparison = plot_navigation_grid(
         nav_grid,
         ax=axes[0, 0],
         show_obstacles=True,
@@ -138,8 +144,26 @@ def main():
         path=path_with_currents,
         start_point=start,
         end_point=goal,
-        title="Energy-Efficient Path With Current Awareness\n(Works with favorable currents, avoids unfavorable ones)"
+        title="A* vs Dijkstra: Current-Aware Path Comparison\n(A*: Green, Dijkstra: Purple)"
     )
+    
+    # Add Dijkstra path in a different color
+    if dijkstra_path:
+        # Convert to world coordinates for plotting
+        dijkstra_world_points = []
+        for x, y in dijkstra_path:
+            world_x, world_y = nav_grid.cell_to_coords(x, y)
+            dijkstra_world_points.append((world_x, world_y))
+        
+        # Extract x and y coordinates
+        d_x = [p[0] for p in dijkstra_world_points]
+        d_y = [p[1] for p in dijkstra_world_points]
+        
+        # Plot Dijkstra path
+        ax_comparison.plot(d_x, d_y, 'o-', color='purple', linewidth=2, markersize=4, label='Dijkstra')
+        
+        # Update legend
+        ax_comparison.legend()
     
     plot_navigation_grid(
         nav_grid,
@@ -177,9 +201,50 @@ def main():
     plt.savefig("path_planning_demo.png", dpi=150)
     plt.show()
     
+    # Calculate metrics for all paths
+    def calculate_path_metrics(path, grid, usv_speed):
+        """Calculate total distance and time for a path."""
+        total_distance = 0
+        total_time = 0
+        
+        for i in range(len(path) - 1):
+            x1, y1 = path[i]
+            x2, y2 = path[i + 1]
+            
+            # Convert to world coordinates
+            wx1, wy1 = grid.cell_to_coords(x1, y1)
+            wx2, wy2 = grid.cell_to_coords(x2, y2)
+            
+            # Calculate Euclidean distance
+            distance = np.sqrt((wx2 - wx1)**2 + (wy2 - wy1)**2)
+            
+            # Calculate travel time using the grid's cost function
+            time = grid.calculate_travel_cost(x1, y1, x2, y2, usv_speed)
+            
+            total_distance += distance
+            total_time += time
+            
+        return total_distance, total_time
+    
+    # Calculate metrics for A* path
+    a_star_distance, a_star_time = calculate_path_metrics(
+        path_with_currents, nav_grid, usv_speed
+    )
+    
+    # Calculate metrics for Dijkstra path
+    dijkstra_distance, dijkstra_time = calculate_path_metrics(
+        dijkstra_path, nav_grid, usv_speed
+    )
+    
+    # Calculate metrics for path without currents
+    no_current_distance, _ = calculate_path_metrics(
+        path_without_currents, nav_grid, usv_speed
+    )
+    
     print("Path planning with currents demonstration complete.")
-    print(f"Path length with currents: {len(path_with_currents)} cells")
-    print(f"Path length without currents: {len(path_without_currents)} cells")
+    print(f"A* Path: {len(path_with_currents)} cells, Distance: {a_star_distance:.2f}m, Time: {a_star_time:.2f}s")
+    print(f"Dijkstra Path: {len(dijkstra_path)} cells, Distance: {dijkstra_distance:.2f}m, Time: {dijkstra_time:.2f}s")
+    print(f"Direct Path (ignoring currents): {len(path_without_currents)} cells, Distance: {no_current_distance:.2f}m")
 
 
 if __name__ == "__main__":
