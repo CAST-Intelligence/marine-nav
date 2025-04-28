@@ -100,23 +100,24 @@ def main():
     )
     nav_grid.current_field = temp_field
     
-    # Create search patterns
-    # Expanding square
+    # Create IAMSAR-compliant search patterns with obstacle awareness
+    # Expanding square (spiral pattern)
     square_center = (50, 70)
     square_pattern = generate_expanding_square_pattern(
-        square_center, max_distance=15, step_size=3
+        square_center, max_distance=30, step_size=5, grid=nav_grid
     )
     
-    # Sector search
+    # Sector search with triangular sweeps
     sector_center = (70, 40)
     sector_pattern = generate_sector_search_pattern(
-        sector_center, max_distance=12, num_triangles=6, initial_orientation=0.2, triangle_angle=np.pi/3
+        sector_center, max_distance=15, num_triangles=6, 
+        initial_orientation=0.2, triangle_angle=np.pi/3, grid=nav_grid
     )
     
-    # Parallel search
-    parallel_start = (40, 40)
+    # Parallel search with geometrically accurate obstacle avoidance
+    parallel_start = (20, 40)  # Moved further left to better demonstrate coverage around obstacles
     parallel_pattern = generate_parallel_search_pattern(
-        parallel_start, width=30, height=20, spacing=4, orientation=0.3
+        parallel_start, width=55, height=30, spacing=5, orientation=0.0, grid=nav_grid
     )
     
     # Plot the results

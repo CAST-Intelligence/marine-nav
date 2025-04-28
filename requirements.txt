@@ -5,3 +5,4 @@ ortools>=9.4.0
 polars>=0.18.0
 networkx>=2.6.0
 shapely>=1.8.0
+geopandas>=0.12.0
