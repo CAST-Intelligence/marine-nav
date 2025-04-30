@@ -45,8 +45,9 @@ class TemporalNavigationGrid:
         self.time_step_duration = time_step_duration
         
         # Initialize grid arrays
-        self.obstacle_grid = np.zeros(grid_size, dtype=bool)
-        self.cost_grid = np.ones(grid_size)  # Base cost is 1.0
+        # Note: numpy arrays are (rows, columns) = (y, x) order
+        self.obstacle_grid = np.zeros((grid_size[1], grid_size[0]), dtype=bool)
+        self.cost_grid = np.ones((grid_size[1], grid_size[0]))  # Base cost is 1.0
         
         # Spatio-temporal field for currents and weather
         self.environment_field = None

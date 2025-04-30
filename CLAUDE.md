@@ -7,10 +7,11 @@
 
 ## Commands
 - Setup: `uv venv && uv pip install -r requirements.txt`
-- Run: `python main.py`
-- Tests: `pytest` or `pytest tests/test_specific.py -v`
-- Lint: `ruff check .`
-- Format: `black .`
+- Run: `uv run main.py`
+- Run examples: `uv run examples/path_planning_demo.py`
+- Tests: `uv run -m pytest` or `uv run -m pytest tests/test_specific.py -v`
+- Lint: `uv run -m ruff check .`
+- Format: `uv run -m black .`
 
 ## Code Guidelines
 - **Imports**: Group standard library, third-party, and local imports

@@ -45,7 +45,7 @@ env/
 *.jpeg
 *.gif
 *.svg
-
+*.mp4
 # OS specific files
 .DS_Store
 Thumbs.db
