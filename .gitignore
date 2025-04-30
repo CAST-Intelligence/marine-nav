@@ -49,3 +49,6 @@ env/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+_tmp/
+data/

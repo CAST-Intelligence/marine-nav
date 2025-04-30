@@ -254,8 +254,8 @@ class ManualRouteCreator:
     
     def on_complete_route(self, event):
         """Save the current route and prepare for next one."""
-        if len(self.current_route) < 2:
-            self.show_message("Need at least 2 waypoints to complete a route.")
+        if len(self.current_route) < 1:
+            self.show_message("Need at least 1 waypoint to complete a route.")
             return
         
         # Save current route
@@ -369,7 +369,11 @@ class ManualRouteCreator:
         results = {}
         for route_idx, route in self.manual_routes.items():
             print(f"\nCalculating metrics for Route {route_idx}...")
-            metrics = self.calculate_route_metrics(route)
+            
+            # Create a complete route that includes the demo start and end points
+            complete_route = [self.demo_start] + route + [self.demo_goal]
+            
+            metrics = self.calculate_route_metrics(complete_route)
             if metrics:
                 results[route_idx] = metrics
                 print(f"Route {route_idx}: {len(metrics['path'])} total cells, "
@@ -389,20 +393,18 @@ class ManualRouteCreator:
         # Calculate metrics for manual routes if not already done
         manual_results = {}
         for route_idx, route in self.manual_routes.items():
-            metrics = self.calculate_route_metrics(route)
+            # Create a complete route that includes the demo start and end points
+            complete_route = [self.demo_start] + route + [self.demo_goal]
+            metrics = self.calculate_route_metrics(complete_route)
             if metrics:
                 manual_results[f"Manual {route_idx}"] = metrics
         
         # Calculate metrics for algorithmic routes
         algo_results = {}
         
-        # Find common start/end points from all manual routes
-        all_starts = [route[0] for route in self.manual_routes.values()]
-        all_ends = [route[-1] for route in self.manual_routes.values()]
-        
-        # For simplicity, use the first route's endpoints
-        start = self.manual_routes[1][0]
-        goal = self.manual_routes[1][-1]
+        # Use the original demo start and end points for all algorithms
+        start = self.demo_start
+        goal = self.demo_goal
         
         print(f"\nComparing all routes with algorithmic paths from {start} to {goal}...")
         
@@ -541,7 +543,7 @@ class ManualRouteCreator:
             # Plot route
             ax.plot(wx, wy, '-', color=color, linewidth=2, label=f'Route {route_idx}')
             
-            # Plot original waypoints
+            # Plot original waypoints (skip demo start/end)
             waypoints = self.manual_routes[route_idx]
             waypoint_x = []
             waypoint_y = []
@@ -551,13 +553,14 @@ class ManualRouteCreator:
                 waypoint_y.append(wy)
             
             # Plot waypoints with the route color
-            ax.scatter(waypoint_x, waypoint_y, marker='o', color=color, s=100,
-                     edgecolor='black', linewidth=1)
-                
-            # Add waypoint numbers
-            for i, (x, y) in enumerate(zip(waypoint_x, waypoint_y)):
-                ax.text(x, y, str(i+1), fontsize=10, ha='center', va='center',
-                      color='white', fontweight='bold')
+            if waypoint_x:  # Only if there are actual waypoints
+                ax.scatter(waypoint_x, waypoint_y, marker='o', color=color, s=100,
+                         edgecolor='black', linewidth=1)
+                    
+                # Add waypoint numbers
+                for i, (x, y) in enumerate(zip(waypoint_x, waypoint_y)):
+                    ax.text(x, y, str(i+1), fontsize=10, ha='center', va='center',
+                          color='white', fontweight='bold')
             
             # Add metrics text
             ax.text(0.02, 0.98 - 0.05 * (route_idx-1), 
