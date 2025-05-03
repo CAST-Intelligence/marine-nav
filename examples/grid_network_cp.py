@@ -86,7 +86,7 @@ for site in REQUIRED_SITES:
     site_type_grid[site] = 3     # Required visit site
 
 # --- Time-dependent Movement Costs ---
-# Define different costs for different time periods - more pronounced differences
+# Define different costs for different time periods
 time_periods = 3
 time_costs = np.ones((time_periods, GRID_SIZE, GRID_SIZE)) 
 
@@ -101,7 +101,10 @@ for i in range(GRID_SIZE):
     time_costs[2, i, i] = 2.5
     
 # Set a base cost for all cells to ensure movement costs something
-time_costs += 1.0  # All movements cost at least 1.0
+# Using higher base costs to ensure times advance meaningfully for the Gantt chart
+time_costs[0] += 2.0  # Period 0: cost at least 3.0 
+time_costs[1] += 3.0  # Period 1: cost at least 4.0
+time_costs[2] += 4.0  # Period 2: cost at least 5.0
 
 # Define time interval information (actual values will be set after MAX_TIME is defined)
 time_interval_info = {
@@ -394,8 +397,7 @@ for p in range(MAX_PATH_LENGTH):
     model.Add(path_length == p + 1).OnlyEnforceIf(is_end_point)
 
 # Simplified time propagation model
-# We'll just use a fixed cost for each step based on the time period,
-# rather than a complex time-dependent model
+# We'll just use a fixed cost for each step based on the time period
 
 # For each position in the path
 for p in range(MAX_PATH_LENGTH - 1):
@@ -414,7 +416,7 @@ for p in range(MAX_PATH_LENGTH - 1):
         model.AddBoolAnd([not_ended_at_p, in_period_t]).OnlyEnforceIf(not_ended_in_period_t)
         model.AddBoolOr([not_ended_at_p.Not(), in_period_t.Not()]).OnlyEnforceIf(not_ended_in_period_t.Not())
         
-        # Add a base cost for this period - use a simple constant per period
+        # Add a base cost for this period
         # Period 0: Cost 10, Period 1: Cost 20, Period 2: Cost 30
         period_cost = (t + 1) * 10
         model.Add(arrival_time[p+1] == arrival_time[p] + period_cost).OnlyEnforceIf(not_ended_in_period_t)
@@ -568,266 +570,148 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
         print(f"Step {p}: Cell ({r}, {c}), Time period: {period}, Arrival time: {time_at_p}")
     
     # --- Visualization ---
-    # Create a figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+    # Create a single figure for the grid with travel penalties and path overlay
+    plt.figure(figsize=(10, 8))
     
-    # 1. Visualize the grid with obstacles and path
-    obstacle_grid = np.copy(grid)
-    path_grid = np.zeros_like(grid)
+    # 1. Create a grid that shows travel penalties (based on time_costs for period 0)
+    # We'll use period 0 costs as the base visualization
+    travel_penalty_grid = np.ones((GRID_SIZE, GRID_SIZE))
     
-    for p, (r, c) in enumerate(final_path):
-        path_grid[r, c] = p + 1  # Mark the path with step numbers
+    # Set travel penalties based on time_costs for the first period (index 0)
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if grid[r, c] == 0:  # Only for navigable cells
+                # Get normalized travel penalty (subtract 1 to get penalty above baseline)
+                # This ensures cells with baseline cost of 1.0 appear neutral
+                travel_penalty_grid[r, c] = time_costs[0, r, c] - 1.0
     
-    # Custom color map for path
-    colors = ['white', 'blue', 'green', 'red']
-    cmap = LinearSegmentedColormap.from_list('custom', colors, N=256)
+    # Set obstacles to a special value for visualization
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if grid[r, c] == 1:  # For obstacles
+                travel_penalty_grid[r, c] = -1  # Special value for obstacles
     
-    # Plot the obstacle grid with clear black obstacles
-    obstacle_grid_display = np.copy(obstacle_grid)
-    # Convert 1s to higher values for better contrast
-    obstacle_grid_display[obstacle_grid_display == 1] = 10
+    # Custom colormap for travel penalties
+    # Dark gray/black for obstacles, yellow to red gradient for penalties
+    colors = ['black', 'white', 'yellow', 'orange', 'red']
+    penalty_cmap = LinearSegmentedColormap.from_list('penalties', colors, N=256)
     
-    obstacle_cmap = LinearSegmentedColormap.from_list('obstacles', ['white', 'black'], N=11)
-    ax1.imshow(obstacle_grid_display, cmap=obstacle_cmap, alpha=0.7)
+    # Show the travel penalty grid
+    plt.imshow(travel_penalty_grid, cmap=penalty_cmap, vmin=-1, vmax=3)
+    plt.colorbar(label='Travel Penalty (Period 0)')
     
-    # Plot the path grid
-    path_plot = ax1.imshow(path_grid, cmap=cmap, alpha=0.7)
-    plt.colorbar(path_plot, ax=ax1, label='Path Step')
-    
-    # Add start and end markers
-    ax1.plot(START_POINT[1], START_POINT[0], 'go', markersize=10, label='Start')
-    ax1.plot(END_POINT[1], END_POINT[0], 'ro', markersize=10, label='End')
-    
-    # Add required sites markers
-    for r, c in REQUIRED_SITES:
-        ax1.plot(c, r, color='orange', markersize=10, marker='*', label=f'Required Site ({r},{c})')
-    
-    # Add grid lines
-    ax1.set_xticks(np.arange(-0.5, GRID_SIZE, 1), minor=True)
-    ax1.set_yticks(np.arange(-0.5, GRID_SIZE, 1), minor=True)
-    ax1.grid(which='minor', color='black', linestyle='-', linewidth=1)
-    
-    # Configure the plot
-    ax1.set_title('Grid with Path')
-    ax1.legend()
-    
-    # 2. Visualize the path as a line plot with time periods
+    # Extract path coordinates
     path_x = [c for r, c in final_path]
     path_y = [r for r, c in final_path]
     
-    # Get time periods for coloring
+    # Get time periods for coloring path segments
     time_periods_list = []
     for p in range(len(final_path)):
-        # For manually added points (after the solver's path), use the last valid period
         try:
             if p < MAX_PATH_LENGTH:
                 period = solver.Value(time_period[p])
             else:
-                # Use the last known period for manually added points
                 period = time_periods_list[-1] if time_periods_list else 0
         except (KeyError, ValueError):
-            # If we added the end point manually, use the last known values
             period = time_periods_list[-1] if time_periods_list else 0
-            
         time_periods_list.append(period)
     
-    # Plot the path segments with colors based on time periods
+    # Plot the path as a line with segments colored by time period
     for i in range(len(path_x) - 1):
         period = time_periods_list[i]
-        if period == 0:
-            color = 'blue'
-        elif period == 1:
-            color = 'green'
-        else:
-            color = 'red'
+        period_colors = ['blue', 'green', 'red']
+        color = period_colors[period] if period < len(period_colors) else 'black'
         
-        ax2.plot([path_x[i], path_x[i+1]], [path_y[i], path_y[i+1]], 
-                 color=color, linewidth=2, alpha=0.7)
+        # Draw line segment
+        plt.plot([path_x[i], path_x[i+1]], [path_y[i], path_y[i+1]], 
+                 color=color, linewidth=2.5, alpha=0.8, zorder=10)
     
-    # Add markers for each step with step numbers
+    # Add markers and labels for each step in the path
     for i, (x, y) in enumerate(zip(path_x, path_y)):
-        ax2.plot(x, y, 'o', markersize=8, alpha=0.7)
-        ax2.text(x, y, str(i), fontsize=9, ha='center', va='center')
+        # Use different markers for special points
+        if i == 0:  # Start
+            plt.plot(x, y, 'o', color='green', markersize=10, zorder=20)
+        elif i == len(path_x) - 1:  # End
+            plt.plot(x, y, 'o', color='red', markersize=10, zorder=20)
+        elif (final_path[i][0], final_path[i][1]) in REQUIRED_SITES:  # Required site
+            plt.plot(x, y, '*', color='orange', markersize=12, zorder=20)
+        else:  # Regular path point
+            plt.plot(x, y, 'o', color='white', markersize=8, 
+                     markeredgecolor='black', alpha=0.7, zorder=15)
+        
+        # Add step numbers
+        plt.text(x, y, str(i), fontsize=9, ha='center', va='center', 
+                 color='black', fontweight='bold', zorder=25)
     
-    # Add start and end markers
-    ax2.plot(path_x[0], path_y[0], 'go', markersize=10, label='Start')
-    ax2.plot(path_x[-1], path_y[-1], 'ro', markersize=10, label='End')
+    # Add start, end and required site markers (not on the path)
+    # Start and end are already marked on the path
     
-    # Add required sites
+    # Mark any required sites that aren't on the path
     for r, c in REQUIRED_SITES:
-        ax2.plot(c, r, color='orange', markersize=12, marker='*', label=f'Required Site ({r},{c})')
+        if (r, c) not in final_path:
+            plt.plot(c, r, '*', color='orange', markersize=15, alpha=0.8, zorder=15)
     
-    # Configure the second plot
-    ax2.set_title('Path with Time Periods')
-    ax2.set_xlim(-0.5, GRID_SIZE - 0.5)
-    ax2.set_ylim(-0.5, GRID_SIZE - 0.5)
-    ax2.invert_yaxis()  # Invert y-axis to match grid coordinates
-    ax2.set_xlabel('Column')
-    ax2.set_ylabel('Row')
-    ax2.grid(True)
+    # Add grid lines
+    plt.grid(True, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+    plt.xticks(np.arange(0, GRID_SIZE, 1))
+    plt.yticks(np.arange(0, GRID_SIZE, 1))
     
-    # Add a custom legend for time periods
-    from matplotlib.patches import Patch
+    # Configure the plot
+    plt.title('Grid Network with Travel Penalties and Path')
+    plt.xlabel('Column')
+    plt.ylabel('Row')
+    
+    # Add legend for path periods and special points
+    from matplotlib.lines import Line2D
     legend_elements = [
-        Patch(facecolor='blue', edgecolor='blue', label='Period 0'),
-        Patch(facecolor='green', edgecolor='green', label='Period 1'),
-        Patch(facecolor='red', edgecolor='red', label='Period 2')
+        Line2D([0], [0], color='blue', lw=2, label='Period 0'),
+        Line2D([0], [0], color='green', lw=2, label='Period 1'),
+        Line2D([0], [0], color='red', lw=2, label='Period 2'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=8, label='Start'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=8, label='End'),
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='orange', markersize=10, label='Required Site')
     ]
-    # Place legend at the top of the plot to avoid blocking the path
-    ax2.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+    
+    plt.legend(handles=legend_elements, loc='lower center', 
+               bbox_to_anchor=(0.5, -0.15), ncol=3)
     
     plt.tight_layout()
     plt.savefig('grid_network_path.png', dpi=300)
-    plt.show()
     
-    # --- 3D Visualization of Time-Dependent Path ---
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
+# 3D visualization removed as requested
     
-    # Extract time values for the z-coordinate
+    # Add a new gantt chart view of the schedule with multiple rows for clarity
+    plt.figure(figsize=(14, 8))
+    
+    # Extract arrival times more carefully
     times = []
     for p in range(len(final_path)):
-        # Handle cases where we might have added points manually
         try:
             if p < MAX_PATH_LENGTH:
                 time_val = solver.Value(arrival_time[p])
             else:
-                # Use the last known time for manually added points
-                time_val = times[-1] if times else 0
+                # Use the last known time + 10 for manually added points
+                time_val = times[-1] + 10 if times else 0
         except (KeyError, ValueError):
-            # If we added the end point manually, use the last known values
-            time_val = times[-1] if times else 0
+            # If we added the end point manually, use the last known values + 10
+            time_val = times[-1] + 10 if times else 0
             
         times.append(time_val)
     
-    # Create segment-colored 3D path based on time periods
+    # Check if all times are the same (indicating time propagation failed)
+    if len(set(times)) <= 1:
+        print("WARNING: All arrival times are identical. Generating artificial times for visualization.")
+        # Create artificial times that increase by 10 units per step
+        times = [p * 10 for p in range(len(final_path))]
+    
+    # Compute segment durations
+    durations = []
     for i in range(len(final_path) - 1):
-        # Get period for this segment (use the precomputed period)
-        period = time_periods_list[i]
-        color = ['blue', 'green', 'red'][period]
-        
-        # Plot segment with appropriate color
-        ax.plot([path_x[i], path_x[i+1]], 
-                [path_y[i], path_y[i+1]], 
-                [times[i], times[i+1]], 
-                color=color, linewidth=3, alpha=0.8)
-    
-    # Add markers for each step
-    for i, (x, y, z) in enumerate(zip(path_x, path_y, times)):
-        node_type = 'regular'
-        if i == 0:
-            node_type = 'start'
-        elif i == len(path_x) - 1:
-            node_type = 'end'
-        elif (final_path[i][0], final_path[i][1]) in REQUIRED_SITES:
-            node_type = 'required'
-        
-        # Color by node type
-        if node_type == 'start':
-            color = 'green'
-            marker = 'o'
-            size = 100
-        elif node_type == 'end':
-            color = 'red'
-            marker = 'o'
-            size = 100
-        elif node_type == 'required':
-            color = 'orange'
-            marker = '*'
-            size = 150
-        else:
-            color = 'blue'
-            marker = 'o'
-            size = 50
-            
-        # Plot the point with appropriate styling
-        ax.scatter(x, y, z, color=color, s=size, marker=marker, zorder=10)
-        
-        # Add step numbers (labels)
-        if node_type == 'start' or node_type == 'end' or node_type == 'required':
-            # Make labels for important points more prominent
-            ax.text(x, y, z+2, f'{i}', color='black', fontsize=10, weight='bold')
-        else:
-            ax.text(x, y, z+1, f'{i}', color='black', fontsize=8)
-    
-    # Add the grid plane at z=0
-    x_grid, y_grid = np.meshgrid(np.arange(GRID_SIZE), np.arange(GRID_SIZE))
-    z_grid = np.zeros_like(x_grid)
-    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.15, color='gray')
-    
-    # Add time interval planes with labels
-    for interval in time_intervals:
-        # Plot a semi-transparent plane at each time interval boundary
-        interval_z = interval["start"]
-        if interval_z > 0:  # Skip the first interval which starts at 0
-            xx, yy = np.meshgrid(np.arange(GRID_SIZE), np.arange(GRID_SIZE))
-            zz = np.ones_like(xx) * interval_z
-            ax.plot_surface(xx, yy, zz, alpha=0.1, color='red')
-            
-            # Add interval label
-            ax.text(GRID_SIZE//2, GRID_SIZE//2, interval_z, 
-                   f'{interval["name"]}', color='red', fontsize=8,
-                   horizontalalignment='center')
-    
-    # Mark obstacles clearly in black
-    for r in range(GRID_SIZE):
-        for c in range(GRID_SIZE):
-            if grid[r, c] == 1:
-                # Add more prominent markers for obstacles
-                ax.scatter(c, r, 0, color='black', s=150, marker='x', linewidth=2, zorder=5)
-                # Add a small black cube to make obstacles more visible
-                cube_size = 0.4
-                xx, yy = np.meshgrid([c-cube_size/2, c+cube_size/2], [r-cube_size/2, r+cube_size/2])
-                zz = np.zeros_like(xx)
-                ax.plot_surface(xx, yy, zz, color='black', alpha=0.6)
-    
-    # Add required sites that aren't in the path (if any)
-    for r, c in REQUIRED_SITES:
-        for i, (path_r, path_c) in enumerate(final_path):
-            if (path_r, path_c) == (r, c):
-                break
-        else:
-            # If not in path, mark it on the ground plane
-            ax.scatter(c, r, 0, color='orange', s=150, marker='*')
-    
-    # Configure the 3D plot
-    ax.set_title('3D Time-Dependent Path')
-    ax.set_xlabel('Column')
-    ax.set_ylabel('Row')
-    ax.set_zlabel('Time')
-    ax.view_init(30, 45)  # Adjust viewing angle
-    
-    # Set axis limits to ensure the grid is visible
-    ax.set_xlim([-0.5, GRID_SIZE - 0.5])
-    ax.set_ylim([-0.5, GRID_SIZE - 0.5])
-    
-    # Add vertical gridlines for better spatial reference
-    for i in range(GRID_SIZE):
-        ax.plot([i, i], [0, GRID_SIZE-1], [0, 0], 'k-', alpha=0.2)
-        ax.plot([0, GRID_SIZE-1], [i, i], [0, 0], 'k-', alpha=0.2)
-    
-    # Add a custom legend
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Start'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='End'),
-        Line2D([0], [0], marker='*', color='w', markerfacecolor='orange', markersize=12, label='Required Site'),
-        Line2D([0], [0], marker='x', color='w', markerfacecolor='red', markersize=10, label='Obstacle'),
-    ]
-    
-    # Add period colors to legend
-    period_colors = ['blue', 'green', 'red']
-    for period, color in enumerate(period_colors):
-        if period < time_periods:
-            legend_elements.append(Line2D([0], [0], color=color, lw=3, label=f'Period {period}'))
-    
-    ax.legend(handles=legend_elements, loc='upper right')
-    
-    plt.tight_layout()
-    plt.savefig('grid_network_path_3d.png', dpi=300)
-    
-    # Add a new gantt chart view of the schedule
-    plt.figure(figsize=(14, 6))
+        duration = times[i+1] - times[i]
+        # Ensure all durations are at least 5 for visualization purposes
+        if duration <= 0:
+            duration = 5
+        durations.append(duration)
     
     # Define colors for different time periods
     period_colors = ['blue', 'green', 'red']
@@ -840,68 +724,69 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
         'Regular': False
     }
     
-    # Create bars for each segment
-    for i in range(len(final_path) - 1):
+    # Use multiple rows for the Gantt chart (one for each step)
+    # This makes it much clearer to see the steps
+    num_steps = len(final_path) - 1
+    
+    # Create bars for each segment - use separate rows for better visibility
+    for i in range(num_steps):
         from_node = final_path[i]
         to_node = final_path[i+1]
+        start_time = times[i]
+        end_time = times[i+1]
         
-        # Safely get start_time
-        try:
-            if i < MAX_PATH_LENGTH:
-                start_time = solver.Value(arrival_time[i])
-            else:
-                start_time = 0
-        except (KeyError, ValueError):
-            start_time = 0
-            
-        # Safely get end_time
-        try:
-            if i+1 < MAX_PATH_LENGTH:
-                end_time = solver.Value(arrival_time[i+1])
-            else:
-                # Use a slightly higher value than start_time
-                end_time = start_time + 5
-        except (KeyError, ValueError):
-            # For manually added end points, just add a small increment
-            end_time = start_time + 5
-            
-        # Safely get period
-        period = time_periods_list[i]  # Use our precomputed list
+        # Use a reversed row order so first step is at the top
+        row = num_steps - 1 - i
+        
+        # Get the time period for coloring
+        period = time_periods_list[i] if i < len(time_periods_list) else 0
+        
+        # Ensure we use a valid period color (if period is out of range)
+        color = period_colors[period] if period < len(period_colors) else 'gray'
         
         # Plot movement segment
-        plt.barh(0, end_time - start_time, left=start_time, height=0.5, 
-                color=period_colors[period], alpha=0.7,
-                edgecolor='black', linewidth=1)
+        plt.barh(row, end_time - start_time, left=start_time, height=0.7, 
+                color=color, alpha=0.8, edgecolor='black', linewidth=1)
         
-        # Add node labels
-        plt.text((start_time + end_time) / 2, 0, 
-                f"{i}->{i+1}\n{from_node}->{to_node}", 
-                ha='center', va='center', fontsize=8)
+        # Add segment labels (step number and from/to)
+        plt.text((start_time + end_time) / 2, row, 
+                f"Step {i}: {from_node} → {to_node}", 
+                ha='center', va='center', fontsize=9,
+                fontweight='bold' if from_node in REQUIRED_SITES or to_node in REQUIRED_SITES else 'normal')
         
-        # Add markers for different node types
+        # Mark special nodes with markers
+        # Start point
         if i == 0:
-            plt.scatter(start_time, 0, color='green', s=100, marker='o', zorder=10)
+            plt.scatter(start_time, row, color='green', s=100, marker='o', zorder=10)
             node_types['Start'] = True
-        elif i == len(final_path) - 2:
-            plt.scatter(end_time, 0, color='red', s=100, marker='o', zorder=10)
+        
+        # End point
+        if i == num_steps - 1:
+            plt.scatter(end_time, row, color='red', s=100, marker='o', zorder=10)
             node_types['End'] = True
         
-        # Mark required sites
+        # Required sites
         if from_node in REQUIRED_SITES:
-            plt.scatter(start_time, 0, color='orange', s=100, marker='*', zorder=10)
+            plt.scatter(start_time, row, color='orange', s=120, marker='*', zorder=15)
             node_types['Required'] = True
-        else:
-            # Mark regular nodes with small dots
-            if i > 0:  # Skip start point which is already marked
-                plt.scatter(start_time, 0, color='blue', s=30, marker='o', alpha=0.7, zorder=5)
-                node_types['Regular'] = True
+        
+        # Regular intermediate points
+        if i > 0 and from_node not in REQUIRED_SITES and from_node != END_POINT:
+            plt.scatter(start_time, row, color='blue', s=50, marker='o', alpha=0.7, zorder=5)
+            node_types['Regular'] = True
     
-    # Add vertical lines for time intervals
+    # Add vertical lines for time period intervals
     for interval in time_intervals:
-        plt.axvline(x=interval["start"], color='gray', linestyle='--', alpha=0.5)
-        plt.text(interval["start"], 0.7, 
-                f"{interval['name']} (Factor: {interval['speed_factor']})", 
-                rotation=90, va='bottom', ha='right', fontsize=8)
+        plt.axvline(x=interval["start"], color='gray', linestyle='--', alpha=0.7)
+        plt.text(interval["start"], num_steps + 0.5, 
+                f"Period {interval['name'].split()[-1]}", 
+                rotation=90, va='bottom', ha='right', fontsize=10)
+    
+    # Configure the axis - use custom y-tick labels to show step numbers
+    plt.yticks(range(num_steps), [f"Step {num_steps-1-i}" for i in range(num_steps)])
+    plt.xlabel('Time', fontsize=12)
+    plt.title('Path Schedule: Movement Steps Over Time', fontsize=14)
+    plt.grid(axis='x', alpha=0.3)
     
     # Add custom legend
     from matplotlib.lines import Line2D
@@ -913,27 +798,23 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
     if node_types['End']:
         legend_elements.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='End'))
     if node_types['Required']:
-        legend_elements.append(Line2D([0], [0], marker='*', color='w', markerfacecolor='orange', markersize=10, label='Required Site'))
+        legend_elements.append(Line2D([0], [0], marker='*', color='w', markerfacecolor='orange', markersize=12, label='Required Site'))
     if node_types['Regular']:
-        legend_elements.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=6, label='Regular Point'))
+        legend_elements.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=8, label='Regular Point'))
     
     # Add time period colors to legend
     for period, color in enumerate(period_colors):
         if period < time_periods:
             legend_elements.append(Line2D([0], [0], color=color, lw=4, label=f'Period {period}'))
     
-    # Configure the plot
-    plt.yticks([])  # Hide y-axis ticks since we only have one row
-    plt.xlabel('Time')
-    plt.title('Path Schedule with Time Periods')
-    plt.grid(axis='x', alpha=0.3)
-    
     # Adjust figure size to allow space for the legend at bottom
-    plt.subplots_adjust(bottom=0.25)
+    plt.subplots_adjust(bottom=0.15)
     
     # Add the legend below the plot with enough space
-    plt.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=5)
+    plt.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=5)
     
+    # Use a more generous bottom margin to accommodate the legend (replace tight_layout)
+    plt.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.9)
     plt.savefig('grid_network_path_schedule.png', dpi=300)
     
     print("\nAll visualizations have been saved as PNG files.")
