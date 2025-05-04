@@ -167,13 +167,14 @@ def add_hex_grid_vectors_to_map(m, hex_data, scale=0.25, arrow_color='speed'):
     # Add a custom CSS to define the arrowhead styles
     arrowhead_css = """
     <style>
+        .hex-vector-arrow {
+            border: none !important; 
+            background: none !important;
+            box-shadow: none !important;
+        }
         .hex-arrow {
             pointer-events: none;
             transform-origin: center;
-        }
-        .hex-arrowhead {
-            fill-opacity: 0.9;
-            stroke-width: 1;
         }
     </style>
     """
@@ -184,36 +185,21 @@ def add_hex_grid_vectors_to_map(m, hex_data, scale=0.25, arrow_color='speed'):
         # Scale arrow length based on magnitude and relative to max value
         # Cap the length to ensure it stays within the hex
         relative_magnitude = magnitude / max_magnitude if max_magnitude > 0 else 0.5
-        length = min(20 * relative_magnitude, 10)  # Limit size to 10px
+        
+        # Reduced max length to prevent arrows from spilling out of hexes
+        length = min(14 * relative_magnitude, 7)  # Smaller maximum size
         
         # Minimum size so very small currents are still visible
-        if length < 3:
-            length = 3
-        
-        # Calculate arrowhead size proportional to length
-        arrowhead_width = min(6, length * 0.6)
-        arrowhead_length = min(6, length * 0.8)
-        
-        # Calculate arrow end points
-        end_x = length
-        end_y = 0
-        
-        # Define the SVG path for the arrow
+        if length < 2:
+            length = 2
+            
+        # Create a pure arrowhead style (no line stem)
+        # This is more readable when zoomed out
         svg = f"""
-        <svg width="24" height="24" viewBox="-12 -12 24 24" class="hex-arrow" 
+        <svg width="20" height="20" viewBox="-10 -10 20 20" class="hex-arrow" 
              style="transform: rotate({angle}deg);">
-            <defs>
-                <marker id="arrowhead_{int(magnitude*100)}" 
-                        viewBox="0 0 10 10" refX="1" refY="5"
-                        markerWidth="{arrowhead_width}" markerHeight="{arrowhead_width}" 
-                        orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" class="hex-arrowhead" 
-                          fill="{color}" stroke="{color}" />
-                </marker>
-            </defs>
-            <line x1="0" y1="0" x2="{end_x}" y2="{end_y}" 
-                  stroke="{color}" stroke-width="2" 
-                  marker-end="url(#arrowhead_{int(magnitude*100)})" />
+             <polygon points="0,{-length} {length*0.6},{length*0.5} 0,{length*0.3} {-length*0.6},{length*0.5}"
+                     fill="{color}" stroke="{color}" stroke-width="0.5" />
         </svg>
         """
         return svg
@@ -240,10 +226,10 @@ def add_hex_grid_vectors_to_map(m, hex_data, scale=0.25, arrow_color='speed'):
         # Create the SVG arrow
         arrow_svg = create_arrow_svg(row['direction'], row['magnitude'], color, max_magnitude)
         
-        # Create a custom icon with the SVG arrow
+        # Create a custom icon with the SVG arrow - smaller size to fit better in hexes
         icon = folium.DivIcon(
-            icon_size=(24, 24),  # Fixed size container
-            icon_anchor=(12, 12),  # Center point
+            icon_size=(20, 20),  # Smaller container
+            icon_anchor=(10, 10),  # Center point
             html=arrow_svg,
             class_name="hex-vector-arrow"
         )
@@ -271,8 +257,7 @@ def add_hex_grid_vectors_to_map(m, hex_data, scale=0.25, arrow_color='speed'):
             <div style="display: flex; align-items: center; margin: 5px 0;">
                 <div style="width: 24px; height: 24px; position: relative;">
                     <svg width="24" height="24" viewBox="-12 -12 24 24">
-                        <line x1="0" y1="0" x2="10" y2="0" stroke="#ff0000" stroke-width="2" />
-                        <polygon points="10,0 6,3 6,-3" fill="#ff0000" stroke="#ff0000" />
+                        <polygon points="0,-8 5,4 0,1 -5,4" fill="#ff0000" stroke="#ff0000" stroke-width="0.5" />
                     </svg>
                 </div>
                 <span style="margin-left: 5px;">Stronger current</span>
@@ -280,8 +265,7 @@ def add_hex_grid_vectors_to_map(m, hex_data, scale=0.25, arrow_color='speed'):
             <div style="display: flex; align-items: center; margin: 5px 0;">
                 <div style="width: 24px; height: 24px; position: relative;">
                     <svg width="24" height="24" viewBox="-12 -12 24 24">
-                        <line x1="0" y1="0" x2="10" y2="0" stroke="#ffcc00" stroke-width="2" />
-                        <polygon points="10,0 6,3 6,-3" fill="#ffcc00" stroke="#ffcc00" />
+                        <polygon points="0,-5 3,2 0,0 -3,2" fill="#ffcc00" stroke="#ffcc00" stroke-width="0.5" />
                     </svg>
                 </div>
                 <span style="margin-left: 5px;">Weaker current</span>
@@ -381,11 +365,12 @@ def main():
     cmap = plt.cm.YlOrRd
     norm = plt.Normalize(magnitude.min(), magnitude.max())
     
-    # Plot arrows
+    # Plot arrows with arrowhead style for better visualization at different zoom levels
     plt.quiver(lons, lats, u, v, magnitude, 
                cmap=cmap, norm=norm, 
-               scale=50, width=0.002, 
-               pivot='tail', zorder=10)
+               scale=50, width=0.003, 
+               pivot='mid', headwidth=4, headlength=5, headaxislength=4.5,
+               zorder=10)
     
     # Plot hexagon boundaries for a few hexagons (not all to avoid clutter)
     sample_hexes = np.random.choice(hexagons, min(100, len(hexagons)//5))
