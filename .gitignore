@@ -53,3 +53,10 @@ Thumbs.db
 _tmp/
 data/
 *.html
+ds-component-pixi/main
+examples/datastar-pixijs-component/main
+examples/datastar-pixijs-component/go.mod
+examples/datastar-pixijs-component/go.sum
+examples/datastar-pixijs-component/main.go
+examples/datastar-pixijs-component/static/js/pixi-mangled-text.js
+examples/datastar-pixijs-component/static/js/reverse-component.js
