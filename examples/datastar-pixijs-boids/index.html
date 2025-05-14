@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boids Simulation with Datastar & PixiJS</title>
+    <!-- Datastar JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
+    <!-- PixiJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.6.6/pixi.min.js" referrerpolicy="no-referrer"></script>
+    <!-- Web Component JS -->
+    <script type="module" src="/static/js/boids-component.js"></script>
+    <!-- Basic Styling -->
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>
+        .loading-dots { opacity:0; transition: opacity 200ms ease-out; }
+        .loading-dots.loading { opacity:1; transition: opacity 200ms ease-in; }
+        .loading-dots::after { content: ' .'; animation: loading-dots 1s steps(5, end) infinite; }
+        @keyframes loading-dots { 0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0);} 40% { color: inherit; text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0);} 60% { text-shadow: .25em 0 0, .5em 0 0 rgba(0,0,0,0);} 80%, 100% { text-shadow: .25em 0 0, .5em 0 0;} }
+        
+        /* Slider styling */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .slider-container input[type="range"] {
+            flex-grow: 1;
+        }
+        .slider-value {
+            width: 3rem;
+            text-align: right;
+        }
+    </style>
+</head>
+<body class="p-4 bg-gray-50 font-sans">
+
+    <h1 class="text-3xl font-bold mb-4 text-center">Boids Simulation</h1>
+    <p class="text-center mb-6 text-gray-600">Server-side boids simulation with datastar controls</p>
+
+    <!-- Main container: Initialize ALL signals -->
+    <div data-signals="{
+        boids: [],
+        alignmentWeight: 1.0,
+        cohesionWeight: 1.0, 
+        separationWeight: 1.5,
+        speedLimit: 3.0,
+        boidCount: 50,
+        perceptionRadius: 75.0,
+        updating: false
+    }" class="max-w-6xl mx-auto">
+
+        <div class="flex flex-col md:flex-row gap-6">
+            <!-- Controls Panel -->
+            <div class="bg-white p-4 rounded-lg shadow-md md:w-1/4">
+                <h2 class="text-xl font-bold mb-4 text-blue-700">Simulation Controls</h2>
+                
+                <div class="loading-dots text-blue-600 mb-4" data-class="{'loading': $updating}">Updating</div>
+                
+                <!-- Alignment Weight Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Alignment</label>
+                    <div class="slider-container">
+                        <input type="range" min="0" max="10" step="0.1" 
+                               data-bind-alignmentWeight
+                               data-on-input__debounce.100ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$alignmentWeight.toFixed(1)"></span>
+                    </div>
+                </div>
+                
+                <!-- Cohesion Weight Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cohesion</label>
+                    <div class="slider-container">
+                        <input type="range" min="0" max="10" step="0.1" 
+                               data-bind-cohesionWeight
+                               data-on-input__debounce.100ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$cohesionWeight.toFixed(1)"></span>
+                    </div>
+                </div>
+                
+                <!-- Separation Weight Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Separation</label>
+                    <div class="slider-container">
+                        <input type="range" min="0" max="10" step="0.1" 
+                               data-bind-separationWeight
+                               data-on-input__debounce.100ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$separationWeight.toFixed(1)"></span>
+                    </div>
+                </div>
+                
+                <!-- Speed Limit Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Speed Limit</label>
+                    <div class="slider-container">
+                        <input type="range" min="0.5" max="10" step="0.1" 
+                               data-bind-speedLimit
+                               data-on-input__debounce.100ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$speedLimit.toFixed(1)"></span>
+                    </div>
+                </div>
+                
+                <!-- Perception Radius Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Perception Radius</label>
+                    <div class="slider-container">
+                        <input type="range" min="10" max="200" step="1" 
+                               data-bind-perceptionRadius
+                               data-on-input__debounce.100ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$perceptionRadius.toFixed(0)"></span>
+                    </div>
+                </div>
+                
+                <!-- Boid Count Control -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Boid Count</label>
+                    <div class="slider-container">
+                        <input type="range" min="10" max="200" step="1" 
+                               data-bind-boidCount
+                               data-on-input__debounce.500ms="@get('/update-params')"
+                               data-indicator-updating
+                               class="w-full">
+                        <span class="slider-value" data-text="$boidCount"></span>
+                    </div>
+                </div>
+                
+                <div class="mt-6 text-center">
+                    <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                            data-on-click="@get('/boids-stream')">
+                        Start Simulation
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Boids Visualization -->
+            <div class="bg-white p-4 rounded-lg shadow-md flex-1">
+                <h2 class="text-xl font-bold mb-4 text-green-700">Boids Simulation</h2>
+                
+                <!-- PixiJS Component for Boids -->
+                <div class="flex justify-center">
+                    <pixi-boids
+                        data-attr-boids="$boids"
+                        data-attr-alignment-weight="$alignmentWeight"
+                        data-attr-cohesion-weight="$cohesionWeight"
+                        data-attr-separation-weight="$separationWeight"
+                        data-attr-speed-limit="$speedLimit"
+                        data-attr-perception-radius="$perceptionRadius"
+                    ></pixi-boids>
+                </div>
+                
+                <!-- Simulation Stats -->
+                <div class="mt-4 text-sm text-gray-600">
+                    <p>Active Boids: <span data-text="$boids.length"></span></p>
+                    <p>Simulation running on server - positions streamed via SSE</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <p>Based on <a href="https://en.wikipedia.org/wiki/Boids" target="_blank" class="text-blue-500 hover:underline">Craig Reynolds' Boids algorithm</a></p>
+        </div>
+    </div>
+
+</body>
+</html>
