@@ -21,3 +21,60 @@
 - **Error Handling**: Use try/except with specific exceptions
 - **Algorithms**: Implement search patterns from README.md
 - **Data Processing**: Handle nautical chart data with appropriate libraries
+
+## Web Visualization - DataStar with PixiJS and Leaflet
+
+### Recommended Patterns
+
+- **DataStar Signal Patterns**:
+  - Use DataStar signals directly as function parameters, not through DOM attributes
+  - Example: `updateMap($lat, $lng)` rather than accessing values from the DOM
+  - Avoid using `document.body.getAttribute('data-lat')` - use signal variables instead
+
+- **PixiJS + Leaflet Integration**:
+  - Initialize map and PixiOverlay separately from drawing logic
+  - Store utility functions (project, scale) globally for use outside the PixiOverlay callback
+  - Create separate draw functions that can be called from signal handlers
+
+### Example Structure
+
+```javascript
+// Global variables to access across functions
+let map, pixiOverlay, circle;
+let project, scale;  // Store PixiOverlay utility functions
+
+// Initialize the map and PixiOverlay
+window.setupMap = function(initialLat, initialLng) {
+    // Set up map here...
+    
+    // Set up PixiOverlay with minimal callback
+    pixiOverlay = L.pixiOverlay(function(utils) {
+        // Store utility functions globally
+        project = utils.latLngToLayerPoint;
+        scale = utils.getScale();
+        
+        // Render container
+        utils.getRenderer().render(utils.getContainer());
+    }, pixiContainer);
+    
+    // Initial drawing
+    drawCircle(initialLat, initialLng);
+}
+
+// Separate draw function that can be called from signal handlers
+window.drawCircle = function(lat, lng) {
+    // Drawing logic here using project and scale
+}
+
+// Signal change handler
+window.updateMap = function(lat, lng) {
+    drawCircle(lat, lng);
+    pixiOverlay.redraw();
+}
+```
+
+### Common Issues
+
+- PixiOverlay functions (project, scale) are only available inside the overlay callback
+- DataStar signals should replace any DOM attribute access
+- Keep map center fixed while moving overlay elements to create independent movement
