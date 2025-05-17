@@ -72,11 +72,10 @@
         initialLng: -0.09
     }"
     data-on-load="
-        init($lat,$lng);
-        updateCirclePosition($lat, $lng);
+        setupMap($lat, $lng);
     "
     data-on-signal-change="
-        updateCirclePosition($lat, $lng);
+        updateMap($lat, $lng);
     "
 >
     <div class="controls">
@@ -110,10 +109,13 @@
         // Global variables for map and overlay
         let map, pixiOverlay, circle;
         
+        // Store utility functions from the PixiOverlay for use outside
+        let project, scale;
+        
         // Initialize the map and Pixi overlay
-        window.init = function(lat, lng) {
-            // Create the map
-            map = L.map('map').setView([lat, lng], 13);
+        window.setupMap = function(initialLat, initialLng) {
+            // Create the map with fixed center point
+            map = L.map('map').setView([initialLat, initialLng], 13);
             
             // Add the tile layer
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -125,35 +127,22 @@
             circle = new PIXI.Graphics();
             pixiContainer.addChild(circle);
             
+            // First-draw flag
+            let firstDraw = true;
+            
             // Create the Pixi overlay
-            pixiOverlay = L.pixiOverlay((utils) => {
+            pixiOverlay = L.pixiOverlay(function(utils) {
+                // Store utility functions for use outside this callback
+                project = utils.latLngToLayerPoint;
+                scale = utils.getScale();
+                
                 const renderer = utils.getRenderer();
                 const container = utils.getContainer();
-                const project = utils.latLngToLayerPoint;
-                const scale = utils.getScale();
                 
-                // Draw the circle
-                circle.clear();
-                circle.lineStyle(3 / scale, 0xff0000, 1);
-                circle.beginFill(0xff0000, 0.5);
-                
-                // Get the projected coordinates
-                const currentLat = parseFloat(lat)//document.body.getAttribute('data-lat'));
-                const currentLng = parseFloat(lng)//document.body.getAttribute('data-lng'));
-                const center = project([currentLat, currentLng]);
-                circle.x = center.x;
-                circle.y = center.y;
-                
-                // Draw a circle with 200m radius (roughly converted to pixels)
-                const radiusInMeters = 50;
-                // Get the zoom level to scale appropriately
-                const zoom = map.getZoom();
-                // Approximate pixels per meter at the current latitude and zoom
-                const metersPerPixel = 156543.03392 * Math.cos(currentLat * Math.PI / 180) / Math.pow(2, zoom);
-                const radiusInPixels = radiusInMeters / metersPerPixel;
-                
-                circle.drawCircle(0, 0, radiusInPixels);
-                circle.endFill();
+                if (firstDraw) {
+                    // Only run on first draw
+                    firstDraw = false;
+                }
                 
                 // Render the container
                 renderer.render(container);
@@ -161,17 +150,48 @@
             
             // Add the overlay to the map
             pixiOverlay.addTo(map);
+            
+            // Now that map is set up, draw the initial circle
+            drawCircle(initialLat, initialLng);
         }
         
-        // Update the circle position
-        window.updateCirclePosition = function(lat, lng) {
-            if (!map || !pixiOverlay) return;
+        // Function to draw the circle at a specific position
+        window.drawCircle = function(lat, lng) {
+            if (!circle || !project || !scale) return;
             
-            // Update the map view to follow the circle
-            map.setView([lat, lng], map.getZoom());
+            // Get the projected coordinates
+            const coords = project([lat, lng]);
             
-            // Redraw the pixiOverlay to update the circle position
-            pixiOverlay.redraw();
+            // Clear and redraw the circle
+            circle.clear();
+            circle.lineStyle(3 / scale, 0xff0000, 1);
+            circle.beginFill(0xff0000, 0.5);
+            
+            // Position the circle
+            circle.x = coords.x;
+            circle.y = coords.y;
+            
+            // Draw a circle with 50m radius (roughly converted to pixels)
+            const radiusInMeters = 50;
+            // Get the zoom level to scale appropriately
+            const zoom = map.getZoom();
+            // Approximate pixels per meter at the current latitude and zoom
+            const metersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+            const radiusInPixels = radiusInMeters / metersPerPixel;
+            
+            circle.drawCircle(0, 0, radiusInPixels);
+            circle.endFill();
+        }
+        
+        // Function to update circle position when signals change
+        window.updateMap = function(lat, lng) {
+            // Draw the circle at the new position
+            drawCircle(lat, lng);
+            
+            // Redraw the PixiOverlay
+            if (pixiOverlay) {
+                pixiOverlay.redraw();
+            }
         }
         
         // Calculate new latitude based on distance and bearing
