@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datastar PixiJS with Leaflet - Movable Circle</title>
+    
+    <!-- PixiJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.1.2/pixi.min.js"></script>
+    
+    <!-- Leaflet CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet.PixiOverlay -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-pixi-overlay@1.9.4/L.PixiOverlay.min.js"></script>
+    
+    <!-- Datastar JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #map { 
+            flex-grow: 1;
+            width: 100%;
+        }
+        .controls {
+            background-color: white;
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        label {
+            width: 100px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+            max-width: 400px;
+        }
+        .value-display {
+            min-width: 100px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body
+    data-signals="{
+        lat: 51.505,
+        lng: -0.09,
+        kmPerIncrement: 1,
+        initialLat: 51.505,
+        initialLng: -0.09
+    }"
+    data-on-load="
+        init($lat,$lng);
+        updateCirclePosition($lat, $lng);
+    "
+    data-on-signal-change="
+        updateCirclePosition($lat, $lng);
+    "
+>
+    <div class="controls">
+        <h2>Move Circle by 1km Increments</h2>
+        <div class="control-group">
+            <label>Latitude:</label>
+            <input type="range" min="-90" max="90" step="0.001" data-bind-lat />
+            <span class="value-display" data-text="$lat.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <label>Longitude:</label>
+            <input type="range" min="-180" max="180" step="0.001" data-bind-lng />
+            <span class="value-display" data-text="$lng.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <!-- Using DataStar conventions for button actions -->
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 1km</button>
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 1km</button>
+            <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
+        </div>
+        <div class="info">
+            Each button click moves the circle by approximately 1km in the chosen direction. The exact distance may vary slightly due to the Earth's curvature.
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <script>
+        // Global variables for map and overlay
+        let map, pixiOverlay, circle;
+        
+        // Initialize the map and Pixi overlay
+        window.init = function(lat, lng) {
+            // Create the map
+            map = L.map('map').setView([lat, lng], 13);
+            
+            // Add the tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Create the Pixi container and circle
+            const pixiContainer = new PIXI.Container();
+            circle = new PIXI.Graphics();
+            pixiContainer.addChild(circle);
+            
+            // Create the Pixi overlay
+            pixiOverlay = L.pixiOverlay((utils) => {
+                const renderer = utils.getRenderer();
+                const container = utils.getContainer();
+                const project = utils.latLngToLayerPoint;
+                const scale = utils.getScale();
+                
+                // Draw the circle
+                circle.clear();
+                circle.lineStyle(3 / scale, 0xff0000, 1);
+                circle.beginFill(0xff0000, 0.5);
+                
+                // Get the projected coordinates
+                const currentLat = parseFloat(lat)//document.body.getAttribute('data-lat'));
+                const currentLng = parseFloat(lng)//document.body.getAttribute('data-lng'));
+                const center = project([currentLat, currentLng]);
+                circle.x = center.x;
+                circle.y = center.y;
+                
+                // Draw a circle with 200m radius (roughly converted to pixels)
+                const radiusInMeters = 50;
+                // Get the zoom level to scale appropriately
+                const zoom = map.getZoom();
+                // Approximate pixels per meter at the current latitude and zoom
+                const metersPerPixel = 156543.03392 * Math.cos(currentLat * Math.PI / 180) / Math.pow(2, zoom);
+                const radiusInPixels = radiusInMeters / metersPerPixel;
+                
+                circle.drawCircle(0, 0, radiusInPixels);
+                circle.endFill();
+                
+                // Render the container
+                renderer.render(container);
+            }, pixiContainer);
+            
+            // Add the overlay to the map
+            pixiOverlay.addTo(map);
+        }
+        
+        // Update the circle position
+        window.updateCirclePosition = function(lat, lng) {
+            if (!map || !pixiOverlay) return;
+            
+            // Update the map view to follow the circle
+            map.setView([lat, lng], map.getZoom());
+            
+            // Redraw the pixiOverlay to update the circle position
+            pixiOverlay.redraw();
+        }
+        
+        // Calculate new latitude based on distance and bearing
+        window.calculateNewLatitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Convert back to degrees
+            return lat2 * 180 / Math.PI;
+        }
+        
+        // Calculate new longitude based on distance and bearing
+        window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude first (needed for longitude calculation)
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Calculate new longitude
+            const lng2 = lng1 + Math.atan2(
+                Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+            );
+            
+            // Convert back to degrees and normalize to -180 to +180
+            return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
+        }
+    </script>
+</body>
+</html>
