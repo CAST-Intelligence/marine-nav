@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datastar deck.gl with MapLibre - Movable Circle</title>
+    
+    <!-- MapLibre -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+    
+    <!-- deck.gl -->
+    <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
+    
+    <!-- Datastar JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #map { 
+            flex-grow: 1;
+            width: 100%;
+        }
+        .controls {
+            background-color: white;
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        label {
+            width: 100px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+            max-width: 400px;
+        }
+        .value-display {
+            min-width: 100px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body
+    data-signals="{
+        lat: 51.505,
+        lng: -0.09,
+        kmPerIncrement: 1,
+        initialLat: 51.505,
+        initialLng: -0.09
+    }"
+    data-on-load="
+        setupMap($lat, $lng);
+    "
+    data-on-signal-change="
+        updateMap($lat, $lng);
+    "
+>
+    <div class="controls">
+        <h2>Move Circle by 1km Increments</h2>
+        <div class="control-group">
+            <label>Latitude:</label>
+            <input type="range" min="-90" max="90" step="0.001" data-bind-lat />
+            <span class="value-display" data-text="$lat.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <label>Longitude:</label>
+            <input type="range" min="-180" max="180" step="0.001" data-bind-lng />
+            <span class="value-display" data-text="$lng.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <!-- Using DataStar conventions for button actions -->
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 1km</button>
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 1km</button>
+            <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
+        </div>
+        <div class="info">
+            Each button click moves the circle by approximately 1km in the chosen direction. The exact distance may vary slightly due to the Earth's curvature.
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <script>
+        // Global variables for map and deck.gl
+        let map, deckOverlay, circleLayer;
+        
+        // Initialize the map and deck.gl overlay
+        window.setupMap = function(initialLat, initialLng) {
+            console.log(initialLat, initialLng)
+            // Create the MapLibre map
+            map = new maplibregl.Map({
+                container: 'map',
+                // style: 'https://demotiles.maplibre.org/style.json', // Free tile provider
+                // style: 'https://openmaptiles.github.io/positron-gl-style/style-cdn.json',
+                // style: 'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json',
+                style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+
+                center: [initialLng, initialLat],
+                zoom: 13
+            });
+            
+            // Wait for the map to load
+            map.on('load', () => {
+                // Create the initial circle layer
+                createCircleLayer(initialLat, initialLng);
+                
+                // Create the deck.gl overlay
+                deckOverlay = new deck.MapboxOverlay({
+                    interleaved: true,
+                    layers: [circleLayer]
+                });
+                
+                // Add the overlay to the map
+                map.addControl(deckOverlay);
+            });
+        }
+        
+        // Function to create or update the circle layer
+        function createCircleLayer(lat, lng) {
+            // Create a new circle layer
+            circleLayer = new deck.ScatterplotLayer({
+                id: 'circle-layer',
+                data: [
+                    {
+                        position: [lng, lat],
+                        radius: 50, // 50m radius
+                        color: [255, 0, 0, 128] // Red with 50% opacity
+                    }
+                ],
+                pickable: true,
+                stroked: true,
+                filled: true,
+                radiusUnits: 'meters',
+                getPosition: d => d.position,
+                getRadius: d => d.radius,
+                getFillColor: d => d.color,
+                getLineColor: [255, 0, 0],
+                getLineWidth: 3
+            });
+            
+            // If the overlay is already initialized, update it
+            if (deckOverlay) {
+                deckOverlay.setProps({
+                    layers: [circleLayer]
+                });
+            }
+        }
+        
+        // Function to update circle position when signals change
+        window.updateMap = function(lat, lng) {
+            // Update the circle layer with the new position
+            createCircleLayer(lat, lng);
+        }
+        
+        // Calculate new latitude based on distance and bearing
+        window.calculateNewLatitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Convert back to degrees
+            return lat2 * 180 / Math.PI;
+        }
+        
+        // Calculate new longitude based on distance and bearing
+        window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude first (needed for longitude calculation)
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Calculate new longitude
+            const lng2 = lng1 + Math.atan2(
+                Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+            );
+            
+            // Convert back to degrees and normalize to -180 to +180
+            return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
+        }
+    </script>
+</body>
+</html>
