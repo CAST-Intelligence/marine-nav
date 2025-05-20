@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Layer Visibility Toggle Example</title>
+    
+    <!-- MapLibre -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+    
+    <!-- deck.gl -->
+    <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
+    
+    <!-- Datastar JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #map { 
+            flex-grow: 1;
+            width: 100%;
+        }
+        .controls {
+            background-color: white;
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        label {
+            width: 150px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+            max-width: 400px;
+        }
+        .value-display {
+            min-width: 100px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body
+    data-signals="{
+        lat: 51.505,
+        lng: -0.09,
+        kmPerIncrement: 1,
+        initialLat: 51.505,
+        initialLng: -0.09,
+        showCircle: true,
+        showLine: true
+    }"
+    data-on-load="
+        setupMap($lat, $lng, $showCircle, $showLine);
+    "
+    data-on-signal-change="
+        console.log('Signals changed:', {lat: $lat, lng: $lng, showCircle: $showCircle, showLine: $showLine});
+        //updateMap($lat, $lng);
+        //toggleVisibility($showCircle, $showLine);
+        createLayers($lat, $lng, $showCircle, $showLine);
+    "
+>
+    <div class="controls">
+        <h2>Layer Visibility Toggle Example</h2>
+        <div class="control-group">
+            <label>Latitude:</label>
+            <input type="range" min="50.5" max="52" step="0.00001" data-bind-lat />
+            <span class="value-display" data-text="$lat.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <label>Longitude:</label>
+            <input type="range" min="-0.1" max="0.1" step="0.00001" data-bind-lng />
+            <span class="value-display" data-text="$lng.toFixed(6)"></span>
+        </div>
+        <div class="control-group">
+            <!-- Layer visibility toggles -->
+            <label>Show Circle:</label>
+            <input type="checkbox" data-bind="showCircle" checked />
+            
+            <label>Show Line:</label>
+            <input type="checkbox" data-bind="showLine" checked />
+        </div>
+        <div class="control-group">
+            <!-- Movement buttons -->
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 1km</button>
+            <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 1km</button>
+            <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 1km</button>
+            <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
+        </div>
+        <div class="info">
+            This example demonstrates the proper way to toggle layer visibility without errors.
+            Check/uncheck the boxes to toggle the visibility of each layer.
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <script>
+        // Global variables for map and deck.gl
+        let map, deckOverlay;
+        let circleLayer, lineLayer;
+        
+        // Initialize the map and deck.gl overlay
+        window.setupMap = function(initialLat, initialLng, showCircle, showLine) {
+            console.log(`Initializing map at ${initialLat}, ${initialLng}, circle: ${showCircle}, line: ${showLine}`);
+            
+            // Create the MapLibre map
+            map = new maplibregl.Map({
+                container: 'map',
+                style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                center: [initialLng, initialLat],
+                zoom: 13
+            });
+            
+            // Wait for the map to load
+            map.on('load', () => {
+                // Create the initial layers
+                createLayers(initialLat, initialLng, showCircle, showLine);
+                
+                // Create the deck.gl overlay with all layers (visible or not)
+                deckOverlay = new deck.MapboxOverlay({
+                    interleaved: true,
+                    layers: [circleLayer, lineLayer]
+                });
+                
+                // Add the overlay to the map
+                map.addControl(deckOverlay);
+            });
+        }
+        
+        // Function to create or update the layers
+        function createLayers(lat, lng, showCircle, showLine) {
+            // Create a circle layer
+            circleLayer = new deck.ScatterplotLayer({
+                id: 'circle-layer',
+                data: [{
+                    position: [lng, lat],
+                    radius: 100, // 100m radius
+                    color: [255, 0, 0, 128] // Red with 50% opacity
+                }],
+                pickable: true,
+                stroked: true,
+                filled: true,
+                radiusUnits: 'meters',
+                getPosition: d => d.position,
+                getRadius: d => d.radius,
+                getFillColor: d => d.color,
+                getLineColor: [255, 0, 0],
+                getLineWidth: 3,
+                visible: showCircle // Set initial visibility
+            });
+            
+            // Create a line layer (a simple line pointing east)
+            lineLayer = new deck.LineLayer({
+                id: 'line-layer',
+                data: [{
+                    sourcePosition: [lng, lat],
+                    targetPosition: [lng + 0.01, lat]
+                }],
+                pickable: true,
+                getWidth: 5,
+                getColor: [0, 100, 255, 200], // Blue
+                visible: showLine // Set initial visibility
+            });
+            
+            // If the overlay is already initialized, update it
+            if (deckOverlay) {
+                deckOverlay.setProps({
+                    layers: [circleLayer, lineLayer]
+                });
+            }
+        }
+    
+    
+        
+        // Calculate new latitude based on distance and bearing
+        window.calculateNewLatitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Convert back to degrees
+            return lat2 * 180 / Math.PI;
+        }
+        
+        // Calculate new longitude based on distance and bearing
+        window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude first (needed for longitude calculation)
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Calculate new longitude
+            const lng2 = lng1 + Math.atan2(
+                Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+            );
+            
+            // Convert back to degrees and normalize to -180 to +180
+            return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
+        }
+    </script>
+</body>
+</html>
