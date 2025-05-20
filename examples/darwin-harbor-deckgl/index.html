@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marine Navigation - Darwin Harbor, Australia</title>
+    
+    <!-- MapLibre -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+    
+    <!-- deck.gl -->
+    <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
+    
+    <!-- Datastar JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #map { 
+            flex-grow: 1;
+            width: 100%;
+        }
+        .controls {
+            background-color: white;
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        label {
+            width: 100px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+            max-width: 400px;
+        }
+        .value-display {
+            min-width: 100px;
+            text-align: left;
+        }
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        .tab-controls {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .tab {
+            padding: 10px 15px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #fff;
+            border-bottom: 1px solid #fff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body
+    data-signals="{
+        lat: -12.4634,
+        lng: 130.8456,
+        kmPerIncrement: 0.5,
+        initialLat: -12.4634,
+        initialLng: 130.8456,
+        showVectorField: true,
+        showPath: true,
+        activeTab: 'navigation'
+    }"
+    data-on-load="
+        setupMap($lat, $lng);
+    "
+    data-on-signal-change="
+        updateMap($lat, $lng);
+        toggleLayers($showVectorField, $showPath);
+    "
+>
+    <div class="controls">
+        <h2>Darwin Harbor Navigation</h2>
+        
+        <div class="tab-controls">
+            <div class="tab" data-class-active="$activeTab === 'navigation'" data-on-click="$activeTab = 'navigation'">Navigation</div>
+            <div class="tab" data-class-active="$activeTab === 'layers'" data-on-click="$activeTab = 'layers'">Layers</div>
+            <div class="tab" data-class-active="$activeTab === 'info'" data-on-click="$activeTab = 'info'">Info</div>
+        </div>
+        
+        <div class="tab-content" data-class-active="$activeTab === 'navigation'">
+            <div class="control-group">
+                <label>Latitude:</label>
+                <input type="range" min="-12.5" max="-12.4" step="0.0001" data-bind-lat />
+                <span class="value-display" data-text="$lat.toFixed(6)"></span>
+            </div>
+            <div class="control-group">
+                <label>Longitude:</label>
+                <input type="range" min="130.7" max="130.9" step="0.0001" data-bind-lng />
+                <span class="value-display" data-text="$lng.toFixed(6)"></span>
+            </div>
+            <div class="control-group">
+                <!-- Using DataStar conventions for button actions -->
+                <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 0.5km</button>
+                <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 0.5km</button>
+                <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 0.5km</button>
+                <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 0.5km</button>
+                <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
+            </div>
+        </div>
+        
+        <div class="tab-content" data-class-active="$activeTab === 'layers'">
+            <div class="control-group">
+                <label>Vector Field:</label>
+                <input type="checkbox" data-bind-showVectorField checked />
+                <label>Navigation Path:</label>
+                <input type="checkbox" data-bind-showPath checked />
+            </div>
+        </div>
+        
+        <div class="tab-content" data-class-active="$activeTab === 'info'">
+            <p>This visualization shows marine navigation in Darwin Harbor, Australia.</p>
+            <p>Use the controls to move the vessel and toggle different data layers.</p>
+            <p>The vector field represents ocean currents, and the path shows a pre-calculated navigation route.</p>
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div class="legend">
+        <h3>Legend</h3>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: red;"></div>
+            <span>Vessel Location</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: blue;"></div>
+            <span>Ocean Currents</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #00FF00;"></div>
+            <span>Navigation Path</span>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables for map and deck.gl
+        let map, deckOverlay;
+        let vesselLayer, pathLayer, vectorFieldLayer;
+        
+        // Darwin Harbor navigation path (approximate coordinates)
+        const darwinHarborPath = [
+            [130.8456, -12.4634], // Starting point
+            [130.8520, -12.4680],
+            [130.8550, -12.4720],
+            [130.8570, -12.4780],
+            [130.8600, -12.4850],
+            [130.8650, -12.4900],
+            [130.8700, -12.4950],
+            [130.8750, -12.5000]  // Ending point
+        ];
+        
+        // Initialize the map and deck.gl overlay
+        window.setupMap = function(initialLat, initialLng) {
+            console.log(`Initializing map at ${initialLat}, ${initialLng}`);
+            
+            // Create the MapLibre map
+            map = new maplibregl.Map({
+                container: 'map',
+                style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                center: [initialLng, initialLat],
+                zoom: 12
+            });
+            
+            // Wait for the map to load
+            map.on('load', () => {
+                // Create the initial layers
+                createLayers(initialLat, initialLng);
+                
+                // Create the deck.gl overlay
+                deckOverlay = new deck.MapboxOverlay({
+                    interleaved: true,
+                    layers: [vesselLayer, pathLayer, vectorFieldLayer]
+                });
+                
+                // Add the overlay to the map
+                map.addControl(deckOverlay);
+            });
+        }
+        
+        // Function to create or update all layers
+        function createLayers(lat, lng) {
+            // Create vessel layer (simple circle)
+            vesselLayer = new deck.ScatterplotLayer({
+                id: 'vessel-layer',
+                data: [
+                    {
+                        position: [lng, lat],
+                        radius: 50, // 50m radius
+                        color: [255, 0, 0, 200] // Red with opacity
+                    }
+                ],
+                pickable: true,
+                stroked: true,
+                filled: true,
+                radiusUnits: 'meters',
+                getPosition: d => d.position,
+                getRadius: d => d.radius,
+                getFillColor: d => d.color,
+                getLineColor: [255, 0, 0],
+                getLineWidth: 3
+            });
+            
+            // Create path layer
+            pathLayer = new deck.PathLayer({
+                id: 'path-layer',
+                data: [{
+                    path: darwinHarborPath,
+                    width: 10,
+                    color: [0, 255, 0, 150] // Green semi-transparent
+                }],
+                pickable: true,
+                widthScale: 1,
+                widthMinPixels: 2,
+                getPath: d => d.path,
+                getColor: d => d.color,
+                getWidth: d => d.width
+            });
+            
+            // Create vector field layer (simulated currents)
+            // Generate a grid of vectors for the harbor area
+            const vectorData = generateVectorField(lat, lng);
+
+            // Create LineLayer for vectors
+            vectorFieldLayer = new deck.LineLayer({
+                id: 'vector-field-layer',
+                data: vectorData,
+                pickable: true,
+                getSourcePosition: d => d.sourcePosition,
+                getTargetPosition: d => d.targetPosition,
+                getColor: [0, 100, 200, 150], // Blue for water currents
+                getWidth: 2,
+                widthUnits: 'pixels',
+                widthMinPixels: 1
+            });
+            
+            // If the overlay is already initialized, update it
+            if (deckOverlay) {
+                deckOverlay.setProps({
+                    layers: [vesselLayer, pathLayer, vectorFieldLayer]
+                });
+            }
+        }
+        
+        // Function to toggle layer visibility
+        window.toggleLayers = function(showVectorField, showPath) {
+            const layers = [vesselLayer]; // Always show vessel
+            
+            if (showVectorField) {
+                layers.push(vectorFieldLayer);
+            }
+            
+            if (showPath) {
+                layers.push(pathLayer);
+            }
+            
+            if (deckOverlay) {
+                deckOverlay.setProps({
+                    layers: layers
+                });
+            }
+        }
+        
+        // Function to update vessel position when signals change
+        window.updateMap = function(lat, lng) {
+            // Update the vessel layer with new position
+            vesselLayer = new deck.ScatterplotLayer({
+                id: 'vessel-layer',
+                data: [
+                    {
+                        position: [lng, lat],
+                        radius: 50, // 50m radius
+                        color: [255, 0, 0, 200] // Red with opacity
+                    }
+                ],
+                pickable: true,
+                stroked: true,
+                filled: true,
+                radiusUnits: 'meters',
+                getPosition: d => d.position,
+                getRadius: d => d.radius,
+                getFillColor: d => d.color,
+                getLineColor: [255, 0, 0],
+                getLineWidth: 3
+            });
+            
+            // Update the overlay with the new layers
+            if (deckOverlay) {
+                const layers = [vesselLayer];
+                
+                if (document.querySelector('[data-bind-showVectorField]').checked) {
+                    layers.push(vectorFieldLayer);
+                }
+                
+                if (document.querySelector('[data-bind-showPath]').checked) {
+                    layers.push(pathLayer);
+                }
+                
+                deckOverlay.setProps({
+                    layers: layers
+                });
+            }
+        }
+        
+        // Generate simulated vector field data for the harbor area
+        function generateVectorField(centerLat, centerLng) {
+            const vectors = [];
+            const gridSize = 20; // Number of points in each direction
+            const spacing = 0.005; // Smaller spacing for more density
+
+            for (let i = -gridSize/2; i < gridSize/2; i++) {
+                for (let j = -gridSize/2; j < gridSize/2; j++) {
+                    const lat = centerLat + i * spacing;
+                    const lng = centerLng + j * spacing;
+
+                    // Create a circular flow pattern
+                    const dx = -(lat - centerLat) * 0.01;
+                    const dy = (lng - centerLng) * 0.01;
+
+                    // Normalize for clearer visualization
+                    const magnitude = Math.sqrt(dx*dx + dy*dy);
+                    let scaledDx = dx;
+                    let scaledDy = dy;
+
+                    if (magnitude > 0) {
+                        // Scale to make vectors more visible
+                        const scaleFactor = 0.005;
+                        scaledDx = dx/magnitude * scaleFactor;
+                        scaledDy = dy/magnitude * scaleFactor;
+                    }
+
+                    // Calculate endpoint of the vector
+                    const endLng = lng + scaledDx;
+                    const endLat = lat + scaledDy;
+
+                    vectors.push({
+                        sourcePosition: [lng, lat],
+                        targetPosition: [endLng, endLat]
+                    });
+                }
+            }
+
+            console.log(`Generated ${vectors.length} vectors`);
+            return vectors;
+        }
+        
+        // Calculate new latitude based on distance and bearing
+        window.calculateNewLatitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Convert back to degrees
+            return lat2 * 180 / Math.PI;
+        }
+        
+        // Calculate new longitude based on distance and bearing
+        window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
+            // Earth radius in kilometers
+            const R = 6371;
+            
+            // Convert distance and bearing to radians
+            const d = distanceKm / R;
+            const bearing = bearingDegrees * Math.PI / 180;
+            
+            // Convert lat/lng to radians
+            const lat1 = lat * Math.PI / 180;
+            const lng1 = lng * Math.PI / 180;
+            
+            // Calculate new latitude first (needed for longitude calculation)
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(d) +
+                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+            );
+            
+            // Calculate new longitude
+            const lng2 = lng1 + Math.atan2(
+                Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+            );
+            
+            // Convert back to degrees and normalize to -180 to +180
+            return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
+        }
+    </script>
+</body>
+</html>

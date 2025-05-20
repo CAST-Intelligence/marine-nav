@@ -12,3 +12,5 @@ h3>=3.7.6
 folium>=0.14.0
 pandas>=1.4.0
 branca>=0.6.0
+pydeck>=0.8.0
+jupyter>=1.0.0
