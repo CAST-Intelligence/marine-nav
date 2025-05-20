@@ -51,17 +51,16 @@
         timeStepValue: 0.01,
         autoPlayActive: false,
         usvId: '33',
+        frameInterval: 60
     }"
     data-on-load="
         setupMap($lat, $lng, $showVessel,$showPath,$showVectorField);
     "
 
     data-on-signal-change="
-        console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation});
+        console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
         // Single function handling both position and visibility changes
         createLayers($lat, $lng, $showVessel, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue);
-        // Handle animation state separately
-        updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue);
     "
 >
 
@@ -113,7 +112,13 @@
                 </div>
                 <div class="control-group">
                     <button data-on-click="$timeValue = 0">Reset</button>
-                    <button data-on-click="$autoPlayActive = !$autoPlayActive" data-text="$autoPlayActive ? 'Pause' : 'Play'"></button>
+                    <button
+                        data-on-click="$autoPlayActive = !$autoPlayActive"
+                        data-text="$autoPlayActive ? 'Pause' : 'Play'"
+                        data-on-interval__duration.16ms="
+                            $autoPlayActive ? $timeValue = ($timeValue + $timeStepValue) % 1 : null
+                        "
+                    ></button>
                     <button data-on-click="$timeValue = Math.min($timeValue + 0.1, 1)">+10%</button>
                     <button data-on-click="$timeValue = Math.max($timeValue - 0.1, 0)">-10%</button>
                 </div>
@@ -163,7 +168,6 @@
     <script>
         // Global variables for map and deck.gl
         let map, deckOverlay;
-        let animationFrameId = null;
 
         // Icon creation functions are now imported from icons.js
         
@@ -372,39 +376,8 @@
         
         // Geographic utility functions are now imported from geo-utils.js
 
-        // Function to handle animation state - just manages animation loop, not layer creation
-        window.updateAnimationState = function(timeValue, autoPlayActive, showAnimation, usvId, timeStepValue) {
-            // Cancel any existing animation frame
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-
-            // Note: layer creation is now handled in createLayers
-
-            // Handle auto-play animation using DataStar's pattern
-            if (autoPlayActive) {
-                // Use a timeout for better performance than requestAnimationFrame
-                setTimeout(() => {
-                    // Calculate next time value based on step
-                    let newTimeValue = parseFloat(timeValue) + parseFloat(timeStepValue || 0.01);
-
-                    // Loop back to start if we reach the end
-                    if (newTimeValue > 1) {
-                        newTimeValue = 0;
-                    }
-
-                    // Use DataStar's proper pattern - find the time slider and update it
-                    // The slider already has data-bind-timeValue which handles the signal update
-                    const timeSlider = document.querySelector('[data-bind-timeValue]');
-                    if (timeSlider) {
-                        timeSlider.value = newTimeValue;
-                        // Trigger change event to update the signal via data-bind
-                        timeSlider.dispatchEvent(new Event('change'));
-                    }
-                }, 16); // Approx. 60 fps
-            }
-        }
+        // Animation is now handled directly by DataStar using data-on-interval on the Play button
+        // This eliminates the need for manual animation frames and simplifies the code
 
         // Path calculation function is now imported from geo-utils.js
     </script>
