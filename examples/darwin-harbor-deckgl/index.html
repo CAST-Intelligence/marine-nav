@@ -43,7 +43,7 @@
         kmPerIncrement: 0.5,
         initialLat: -12.4634,
         initialLng: 130.8456,
-        showVessel:true,
+        showCircle:true,
         showVectorField:false,
         showPath:true,
         showAnimation: false,
@@ -54,13 +54,13 @@
         frameInterval: 60
     }"
     data-on-load="
-        setupMap($lat, $lng, $showVessel,$showPath,$showVectorField);
+        setupMap($lat, $lng, $showCircle,$showPath,$showVectorField);
     "
 
     data-on-signal-change="
-        console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
+        //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
         // Single function handling both position and visibility changes
-        createLayers($lat, $lng, $showVessel, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue);
+        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue);
     "
 >
 
@@ -151,7 +151,7 @@
     
     <div class="legend">
         <h3>Legend</h3>
-        <div class="legend-item">
+        <div class="legen`d-item">
             <div class="legend-color" style="background-color: red;"></div>
             <span>USV Vessel</span>
         </div>
@@ -168,6 +168,8 @@
     <script>
         // Global variables for map and deck.gl
         let map, deckOverlay;
+        // Store vector field data to avoid unnecessary regeneration
+        let vectorFieldData;
 
         // Icon creation functions are now imported from icons.js
         
@@ -184,7 +186,7 @@
         ];
         
         // Initialize the map and deck.gl overlay
-        window.setupMap = function(initialLat, initialLng, showVessel, showPath, showVectorField) {
+        window.setupMap = function(initialLat, initialLng, showCircle, showPath, showVectorField) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
 
             // Create the MapLibre map
@@ -207,22 +209,22 @@
                 map.addControl(deckOverlay);
 
                 // Now create the initial layers - will update the overlay automatically
-                createLayers(initialLat, initialLng, showVessel, showPath, showVectorField);
+                createLayers(initialLat, initialLng, showCircle, showPath, showVectorField);
             });
         }
         
         // Function to create or update all layers - handles both position and visibility
-        function createLayers(lat, lng, showVessel, showPath, showVectorField, showAnimation, usvId, timeValue) {
+        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue) {
             if (!deckOverlay) return; // Skip if overlay isn't initialized
 
-            console.log(`Creating layers: lat=${lat}, lng=${lng}, showVessel=${showVessel}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
+            // console.log(`Creating layers: lat=${lat}, lng=${lng}, showCircle=${showCircle}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
 
             // Prepare array to hold all layers
             const allLayers = [];
 
-            // Create vessel layer (only visible when animation is off)
-            const vesselLayer = new deck.ScatterplotLayer({
-                id: 'vessel-layer',
+            // Create circle indicator to demonstrate buttons linked with datastar
+            const circleLayer = new deck.ScatterplotLayer({
+                id: 'circle-layer',
                 data: [
                     {
                         position: [lng, lat],
@@ -230,8 +232,8 @@
                         color: [255, 0, 0, 200] // Red with opacity
                     }
                 ],
-                visible: showVessel && !showAnimation, // Only show when animation is off
-                pickable: showVessel && !showAnimation,
+                visible: showCircle, // Only show when animation is off
+                pickable: showCircle,
                 stroked: true,
                 filled: true,
                 radiusUnits: 'meters',
@@ -243,7 +245,7 @@
             });
 
             // Add vessel layer to array
-            allLayers.push(vesselLayer);
+            allLayers.push(circleLayer);
 
             // Create path layer
             const pathLayer = new deck.PathLayer({
@@ -266,13 +268,19 @@
             allLayers.push(pathLayer);
 
             // Create vector field layer (simulated currents)
-            // Generate a grid of vectors for the harbor area
-            const vectorData = generateVectorField(lat, lng);
+            // Generate a grid of vectors only if we haven't already or the position changed significantly
+            // if (!vectorFieldData ||
+                // Math.abs(vectorFieldData[0].sourcePosition[0] - lng) > 0.01 ||
+                // Math.abs(vectorFieldData[0].sourcePosition[1] - lat) > 0.01) 
+            if (!vectorFieldData){
+                console.log("Generating new vector field data");
+                vectorFieldData = generateVectorField(lat, lng);
+            }
 
             // Create LineLayer for vector lines
             const vectorLineLayer = new deck.LineLayer({
                 id: 'vector-line-layer',
-                data: vectorData,
+                data: vectorFieldData,
                 visible: showVectorField,
                 pickable: showVectorField,
                 getSourcePosition: d => d.sourcePosition,
@@ -289,7 +297,7 @@
             // Create IconLayer for vector arrowheads
             const vectorIconLayer = new deck.IconLayer({
                 id: 'vector-icon-layer',
-                data: vectorData,
+                data: vectorFieldData,
                 visible: showVectorField,
                 pickable: showVectorField,
                 iconAtlas: createArrowAtlas(),
