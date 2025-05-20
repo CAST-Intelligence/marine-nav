@@ -22,59 +22,94 @@
 - **Algorithms**: Implement search patterns from README.md
 - **Data Processing**: Handle nautical chart data with appropriate libraries
 
-## Web Visualization - DataStar with PixiJS and Leaflet
+## Web Visualization - DataStar with deck.gl and MapLibre
 
-### Recommended Patterns
+### Recommended DataStar Patterns
 
-- **DataStar Signal Patterns**:
-  - Use DataStar signals directly as function parameters, not through DOM attributes
-  - Example: `updateMap($lat, $lng)` rather than accessing values from the DOM
-  - Avoid using `document.body.getAttribute('data-lat')` - use signal variables instead
+- **Props Down, Events Up Pattern**:
+  - Pass signal values down as function parameters from DataStar
+  - Example: `updateMap($lat, $lng)` to pass signal values directly
+  - Trigger events up with DOM events for DataStar to handle signal updates
+  - Avoid directly manipulating data flow outside of DataStar's reactive system
 
-- **PixiJS + Leaflet Integration**:
-  - Initialize map and PixiOverlay separately from drawing logic
-  - Store utility functions (project, scale) globally for use outside the PixiOverlay callback
-  - Create separate draw functions that can be called from signal handlers
+- **Signal Binding for Controls**:
+  - For camelCase signal names, use `data-bind="camelCaseName"` instead of `data-bind-camelCaseName`
+  - Example: `data-bind="showVectorField"` rather than `data-bind-showVectorField`
+  - Regular kebab-case (dash-separated) signals work with either approach
+  - Use `data-text="$signalName"` to display signal values in the UI
+
+- **Signal Change Handlers**:
+  - Use `data-on-signal-change` attribute to invoke functions when signals change
+  - Keep functions pure by using parameters to receive signal values
+  - Example: `toggleLayers($showVectorField, $showPath, $showAnimation)`
+
+### deck.gl + MapLibre Integration
+
+- **Layer Management**:
+  - Create separate functions for layer creation and visibility toggling
+  - Use `deck.MapboxOverlay` to integrate deck.gl with MapLibre
+  - Organize code as reusable layer factories
+  - Update layers by creating new instances, then updating deck.gl overlay
 
 ### Example Structure
 
 ```javascript
-// Global variables to access across functions
-let map, pixiOverlay, circle;
-let project, scale;  // Store PixiOverlay utility functions
+// Global variables for map and deck.gl
+let map, deckOverlay;
+let vesselLayer, pathLayer, vectorFieldLayer;
 
-// Initialize the map and PixiOverlay
+// Initialize the map and deck.gl overlay
 window.setupMap = function(initialLat, initialLng) {
-    // Set up map here...
-    
-    // Set up PixiOverlay with minimal callback
-    pixiOverlay = L.pixiOverlay(function(utils) {
-        // Store utility functions globally
-        project = utils.latLngToLayerPoint;
-        scale = utils.getScale();
-        
-        // Render container
-        utils.getRenderer().render(utils.getContainer());
-    }, pixiContainer);
-    
-    // Initial drawing
-    drawCircle(initialLat, initialLng);
+    // Create the MapLibre map
+    map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+        center: [initialLng, initialLat],
+        zoom: 12
+    });
+
+    // Create layers
+    createLayers(initialLat, initialLng);
+
+    // Create the deck.gl overlay
+    deckOverlay = new deck.MapboxOverlay({
+        interleaved: true,
+        layers: [vesselLayer, pathLayer, vectorFieldLayer]
+    });
+
+    // Add overlay to map
+    map.addControl(deckOverlay);
 }
 
-// Separate draw function that can be called from signal handlers
-window.drawCircle = function(lat, lng) {
-    // Drawing logic here using project and scale
+// Separate function to toggle layer visibility
+window.toggleLayers = function(showVectorField, showPath) {
+    const layers = [vesselLayer]; // Always show vessel
+
+    if (showVectorField) {
+        layers.push(vectorFieldLayer);
+    }
+
+    if (showPath) {
+        layers.push(pathLayer);
+    }
+
+    deckOverlay.setProps({
+        layers: layers
+    });
 }
 
-// Signal change handler
+// Update function for signal changes
 window.updateMap = function(lat, lng) {
-    drawCircle(lat, lng);
-    pixiOverlay.redraw();
+    vesselLayer = createVesselLayer(lat, lng);
+    // Let toggleLayers handle layer updates
 }
 ```
 
-### Common Issues
+### Important Notes
 
-- PixiOverlay functions (project, scale) are only available inside the overlay callback
-- DataStar signals should replace any DOM attribute access
-- Keep map center fixed while moving overlay elements to create independent movement
+- For mixed case signal names, you MUST use `data-bind="mixedCaseName"` syntax
+- Signal binding with `data-bind-mixedCaseName` won't work for camelCase names
+- When updating check boxes from code, use `dispatchEvent(new Event('change'))` to trigger DataStar
+- Always keep layer management logic separate from UI interaction logic
+- Create pure functions that work with the values passed down from DataStar
+- Minimize direct DOM manipulation - let DataStar handle the reactive updates
