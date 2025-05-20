@@ -17,6 +17,22 @@
 
     <!-- Application CSS -->
     <link rel="stylesheet" href="styles.css" />
+
+    <!-- Application JS Modules -->
+    <script type="module">
+        // Import our modules
+        import * as Icons from './icons.js';
+        import * as GeoUtils from './geo-utils.js';
+
+        // Make module functions available globally
+        window.createUsvIconAtlas = Icons.createUsvIconAtlas;
+        window.createArrowAtlas = Icons.createArrowAtlas;
+
+        window.calculateNewLatitude = GeoUtils.calculateNewLatitude;
+        window.calculateNewLongitude = GeoUtils.calculateNewLongitude;
+        window.getPositionAlongPath = GeoUtils.getPositionAlongPath;
+        window.generateVectorField = GeoUtils.generateVectorField;
+    </script>
 </head>
 
 <!-- !!! NB: cannot bind signals with mixed case names using data-bind-mixedCaseName! need to use data-bind="mixedCaseName" -->
@@ -27,28 +43,29 @@
         kmPerIncrement: 0.5,
         initialLat: -12.4634,
         initialLng: 130.8456,
-        showVectorField:true,
+        showVessel:true,
+        showVectorField:false,
         showPath:true,
+        showAnimation: false,
         timeValue: 0,
         timeStepValue: 0.01,
         autoPlayActive: false,
         usvId: '33',
-        showAnimation: true,
         bool:true
     }"
     data-on-load="
-        setupMap($lat, $lng);
+        setupMap($lat, $lng, $showVessel,$showPath,$showVectorField);
     "
 
     data-on-signal-change="
-        console.log($showVectorField,$showPath,$bool);
+       //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation});
         updateMap($lat, $lng);
-        toggleLayers($showVectorField, $showPath, $showAnimation);
-        updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue);
+
     "
 >
 
-       
+       <!-- // updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue); -->
+        <!-- toggleLayers($showVectorField, $showPath, $showAnimation);    -->
     <div class="controls">
         <h2>Darwin Harbor Navigation</h2>
         
@@ -86,12 +103,12 @@
                 </div>
                 <div class="control-group">
                     <label>Animation:</label>
-                    <input type="range" min="0" max="1" step="0.01" data-bind-timeValue />
+                    <input type="range" min="0" max="1" step="0.01" data-bind="timeValue" />
                     <span class="value-display" data-text="Math.round($timeValue * 100) + '%'"></span>
                 </div>
                 <div class="control-group">
                     <label>Speed:</label>
-                    <input type="range" min="0.001" max="0.05" step="0.001" data-bind-timeStepValue />
+                    <input type="range" min="0.001" max="0.05" step="0.001" data-bind="timeStepValue" />
                     <span class="value-display" data-text="$timeStepValue.toFixed(3)"></span>
                 </div>
                 <div class="control-group">
@@ -102,7 +119,7 @@
                 </div>
                 <div class="control-group">
                     <label>Show Animation:</label>
-                    <input type="checkbox" data-bind-showAnimation />
+                    <input type="checkbox" data-bind="showAnimation" />
                 </div>
             </div>
 
@@ -155,43 +172,7 @@
         let arrowAtlasURL, usvIconAtlasURL;
         let animationFrameId = null;
 
-        // Create a data URL for the USV icon (red triangle with white circle and ID number)
-        function createUsvIconAtlas(id = '33') {
-            // Only create once and cache for reuse with the same ID
-            const cacheKey = `usv-${id}`;
-            if (window[cacheKey]) return window[cacheKey];
-
-            // Create SVG for the USV icon (triangle with numbered circle)
-            const usvSVG = `
-                <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Red triangle -->
-                    <polygon points="64,0 128,112 0,112" fill="red" />
-                    <!-- White circle with ID -->
-                    <circle cx="64" cy="70" r="30" fill="white" />
-                    <!-- ID number -->
-                    <text x="64" y="80" font-family="Arial" font-size="36" font-weight="bold" text-anchor="middle" fill="black">${id}</text>
-                </svg>
-            `;
-
-            const iconURL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(usvSVG)}`;
-            window[cacheKey] = iconURL;
-            return iconURL;
-        }
-
-        // Create a data URL for the arrow icon
-        function createArrowAtlas() {
-            // Only create once and cache for reuse
-            if (arrowAtlasURL) return arrowAtlasURL;
-
-            const arrowSVG = `
-                <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-                    <polygon points="64,0 128,128 64,96 0,128" fill="white" />
-                </svg>
-            `;
-
-            arrowAtlasURL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(arrowSVG)}`;
-            return arrowAtlasURL;
-        }
+        // Icon creation functions are now imported from icons.js
         
         // Darwin Harbor navigation path (approximate coordinates)
         const darwinHarborPath = [
@@ -206,9 +187,9 @@
         ];
         
         // Initialize the map and deck.gl overlay
-        window.setupMap = function(initialLat, initialLng) {
+        window.setupMap = function(initialLat, initialLng,showVessel,showPath,showVectorField) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
-            
+
             // Create the MapLibre map
             map = new maplibregl.Map({
                 container: 'map',
@@ -216,25 +197,46 @@
                 center: [initialLng, initialLat],
                 zoom: 12
             });
-            
+
             // Wait for the map to load
             map.on('load', () => {
                 // Create the initial layers
-                createLayers(initialLat, initialLng);
-                
-                // Create the deck.gl overlay
+                createLayers(initialLat, initialLng,showVessel,showPath,showVectorField);
+
+                // Create the deck.gl overlay with all layers
+                // Layer visibility will be set by toggleLayers
+                const allLayers = [];
+
+                // Add vessel layer
+                if (vesselLayer) {
+                    allLayers.push(vesselLayer);
+                }
+
+                // Add path layer
+                if (pathLayer) {
+                    allLayers.push(pathLayer);
+                }
+
+                // Add vector field layers
+                if (Array.isArray(vectorFieldLayer)) {
+                    allLayers.push(...vectorFieldLayer);
+                } else if (vectorFieldLayer) {
+                    allLayers.push(vectorFieldLayer);
+                }
+
+                // Create the overlay with all layers
                 deckOverlay = new deck.MapboxOverlay({
                     interleaved: true,
-                    layers: [vesselLayer, pathLayer, vectorFieldLayer]
+                    layers: allLayers
                 });
-                
+
                 // Add the overlay to the map
                 map.addControl(deckOverlay);
             });
         }
         
         // Function to create or update all layers
-        function createLayers(lat, lng) {
+        function createLayers(lat, lng, showVessel,showPath,showVectorField) {
             // Create vessel layer (simple circle)
             vesselLayer = new deck.ScatterplotLayer({
                 id: 'vessel-layer',
@@ -245,7 +247,8 @@
                         color: [255, 0, 0, 200] // Red with opacity
                     }
                 ],
-                pickable: true,
+                visible: showVessel,
+                pickable: showVessel,
                 stroked: true,
                 filled: true,
                 radiusUnits: 'meters',
@@ -264,7 +267,8 @@
                     width: 10,
                     color: [0, 255, 0, 150] // Green semi-transparent
                 }],
-                pickable: true,
+                visible: showPath,
+                pickable: showPath,
                 widthScale: 1,
                 widthMinPixels: 2,
                 getPath: d => d.path,
@@ -280,6 +284,7 @@
             const vectorLineLayer = new deck.LineLayer({
                 id: 'vector-line-layer',
                 data: vectorData,
+                visible:showVectorField,
                 pickable: true,
                 getSourcePosition: d => d.sourcePosition,
                 getTargetPosition: d => d.targetPosition,
@@ -293,6 +298,7 @@
             const vectorIconLayer = new deck.IconLayer({
                 id: 'vector-icon-layer',
                 data: vectorData,
+                visible:showVectorField,
                 pickable: true,
                 iconAtlas: createArrowAtlas(),
                 iconMapping: {
@@ -325,36 +331,47 @@
             }
         }
         
-        // Function to toggle layer visibility - props down approach
+        // Function to toggle layer visibility - using deck.gl's visible property as recommended in docs
         window.toggleLayers = function(showVectorField, showPath, showAnimation) {
-            const layers = [];
+            console.log(`Toggle layers: VF=${showVectorField}, Path=${showPath}, Anim=${showAnimation}`);
+            if (!deckOverlay) return; // Skip if overlay isn't initialized
 
-            // Use the values passed directly from DataStar signals
-            if (!showAnimation) {
-                // Show manual vessel position when animation is off
-                layers.push(vesselLayer);
-            } else if (tripLayer) {
-                // Show animated vessel with trip layer when animation is on
-                layers.push(tripLayer);
-            }
+            // Get current layers from the overlay
+            const currentLayers = deckOverlay.props.layers || [];
 
-            if (showVectorField && Array.isArray(vectorFieldLayer)) {
-                // Add all vector field layers (lines and icons)
-                layers.push(...vectorFieldLayer);
-            }
+            // Create new array for updated layers with visibility changes
+            const updatedLayers = currentLayers.map(layer => {
+                // Handle vector field layers
+                if (layer.id === 'vector-line-layer' || layer.id === 'vector-icon-layer') {
+                    return layer.clone({visible: showVectorField});
+                }
 
-            if (showPath) {
-                layers.push(pathLayer);
-            }
+                // Handle path layer
+                if (layer.id === 'path-layer') {
+                    return layer.clone({visible: showPath});
+                }
 
-            if (deckOverlay) {
-                deckOverlay.setProps({
-                    layers: layers
-                });
-            }
+                // Handle vessel layer - show only when animation is off
+                if (layer.id === 'vessel-layer') {
+                    return layer.clone({visible: !showAnimation});
+                }
+
+                // Handle trip layer - show only when animation is on
+                if (layer.id === 'usv-layer') {
+                    return layer.clone({visible: showAnimation});
+                }
+
+                // Return other layers unchanged
+                return layer;
+            });
+
+            // Update the deck.gl overlay with the updated layer instances
+            deckOverlay.setProps({
+                layers: updatedLayers
+            });
         }
         
-        // Function to update vessel position when signals change
+        // Function to update vessel position when signals change (passes lat, lng as args properly)
         window.updateMap = function(lat, lng) {
             // Update the vessel layer with new position
             vesselLayer = new deck.ScatterplotLayer({
@@ -375,104 +392,28 @@
                 getFillColor: d => d.color,
                 getLineColor: [255, 0, 0],
                 getLineWidth: 3
+                // Visibility will be set by toggleLayers
             });
 
-            // Let toggleLayers handle layer updates - will be called by DataStar after this function
-        }
-        
-        // Generate simulated vector field data for the harbor area
-        function generateVectorField(centerLat, centerLng) {
-            const vectors = [];
-            const gridSize = 20; // Number of points in each direction
-            const spacing = 0.005; // Smaller spacing for more density
+            // Update the deck.gl overlay with the new vessel layer
+            if (deckOverlay) {
+                // Get the current layers from the overlay
+                const currentLayers = deckOverlay.props.layers || [];
 
-            for (let i = -gridSize/2; i < gridSize/2; i++) {
-                for (let j = -gridSize/2; j < gridSize/2; j++) {
-                    const lat = centerLat + i * spacing;
-                    const lng = centerLng + j * spacing;
+                // Filter out any existing vessel layers
+                const otherLayers = currentLayers.filter(layer => layer.id !== 'vessel-layer');
 
-                    // Create a circular flow pattern
-                    const dx = -(lat - centerLat) * 0.01;
-                    const dy = (lng - centerLng) * 0.01;
+                // Add the new vessel layer
+                const updatedLayers = [...otherLayers, vesselLayer];
 
-                    // Normalize for clearer visualization
-                    const magnitude = Math.sqrt(dx*dx + dy*dy);
-                    let scaledDx = dx;
-                    let scaledDy = dy;
-
-                    if (magnitude > 0) {
-                        // Scale to make vectors more visible
-                        const scaleFactor = 0.005;
-                        scaledDx = dx/magnitude * scaleFactor;
-                        scaledDy = dy/magnitude * scaleFactor;
-                    }
-
-                    // Calculate endpoint of the vector
-                    const endLng = lng + scaledDx;
-                    const endLat = lat + scaledDy;
-
-                    vectors.push({
-                        sourcePosition: [lng, lat],
-                        targetPosition: [endLng, endLat]
-                    });
-                }
+                // Update the overlay with all layers
+                deckOverlay.setProps({
+                    layers: updatedLayers
+                });
             }
-
-            console.log(`Generated ${vectors.length} vectors`);
-            return vectors;
         }
         
-        // Calculate new latitude based on distance and bearing
-        window.calculateNewLatitude = function(lat, lng, distanceKm, bearingDegrees) {
-            // Earth radius in kilometers
-            const R = 6371;
-            
-            // Convert distance and bearing to radians
-            const d = distanceKm / R;
-            const bearing = bearingDegrees * Math.PI / 180;
-            
-            // Convert lat/lng to radians
-            const lat1 = lat * Math.PI / 180;
-            const lng1 = lng * Math.PI / 180;
-            
-            // Calculate new latitude
-            const lat2 = Math.asin(
-                Math.sin(lat1) * Math.cos(d) +
-                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
-            );
-            
-            // Convert back to degrees
-            return lat2 * 180 / Math.PI;
-        }
-        
-        // Calculate new longitude based on distance and bearing
-        window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
-            // Earth radius in kilometers
-            const R = 6371;
-
-            // Convert distance and bearing to radians
-            const d = distanceKm / R;
-            const bearing = bearingDegrees * Math.PI / 180;
-
-            // Convert lat/lng to radians
-            const lat1 = lat * Math.PI / 180;
-            const lng1 = lng * Math.PI / 180;
-
-            // Calculate new latitude first (needed for longitude calculation)
-            const lat2 = Math.asin(
-                Math.sin(lat1) * Math.cos(d) +
-                Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
-            );
-
-            // Calculate new longitude
-            const lng2 = lng1 + Math.atan2(
-                Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
-                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
-            );
-
-            // Convert back to degrees and normalize to -180 to +180
-            return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
-        }
+        // Geographic utility functions are now imported from geo-utils.js
 
         // Function to handle animation state and create trip layer - props down approach
         window.updateAnimationState = function(timeValue, autoPlayActive, showAnimation, usvId, timeStepValue) {
@@ -481,17 +422,6 @@
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
-
-            // Only process if animation is shown
-            if (!showAnimation) {
-                // Clear trip layer if it exists
-                if (tripLayer) {
-                    tripLayer = null;
-                }
-                return;
-            }
-
-            // Create trip layer based on current animation position
 
             // Calculate current position interpolated along the path
             const currentPosition = getPositionAlongPath(darwinHarborPath, timeValue);
@@ -511,7 +441,7 @@
                 bearing = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
             }
 
-            // Create the trip layer using an IconLayer for the USV
+            // Create or update trip layer using an IconLayer for the USV
             tripLayer = new deck.IconLayer({
                 id: 'usv-layer',
                 data: [
@@ -534,10 +464,28 @@
                 getAngle: d => d.angle,
                 sizeScale: 1,
                 sizeUnits: 'pixels',
-                sizeMinPixels: 20
+                sizeMinPixels: 20,
+                visible: showAnimation // Set visibility based on showAnimation signal
             });
 
-            // Handle auto-play animation
+            // Update the deck.gl overlay with the new trip layer
+            if (deckOverlay) {
+                // Get the current layers from the overlay
+                const currentLayers = deckOverlay.props.layers || [];
+
+                // Filter out any existing trip layers
+                const otherLayers = currentLayers.filter(layer => layer.id !== 'usv-layer');
+
+                // Add the new trip layer
+                const updatedLayers = [...otherLayers, tripLayer];
+
+                // Update the overlay with all layers
+                deckOverlay.setProps({
+                    layers: updatedLayers
+                });
+            }
+
+            // Handle auto-play animation using DataStar's pattern
             if (autoPlayActive) {
                 // Use a timeout for better performance than requestAnimationFrame
                 setTimeout(() => {
@@ -549,78 +497,19 @@
                         newTimeValue = 0;
                     }
 
-                    // Use data-binding to update signal value
-                    // This will trigger a change event that DataStar will handle
+                    // Use DataStar's proper pattern - find the time slider and update it
+                    // The slider already has data-bind-timeValue which handles the signal update
                     const timeSlider = document.querySelector('[data-bind-timeValue]');
                     if (timeSlider) {
                         timeSlider.value = newTimeValue;
-
-                        // Trigger change event to update DataStar signal
-                        const event = new Event('change');
-                        timeSlider.dispatchEvent(event);
+                        // Trigger change event to update the signal via data-bind
+                        timeSlider.dispatchEvent(new Event('change'));
                     }
                 }, 16); // Approx. 60 fps
             }
         }
 
-        // Function to calculate position along a path based on progress (0-1)
-        function getPositionAlongPath(path, progress) {
-            if (!path || path.length < 2) return null;
-
-            // Handle edge cases
-            if (progress <= 0) return path[0];
-            if (progress >= 1) return path[path.length - 1];
-
-            // Calculate total path length
-            let totalDistance = 0;
-            const segments = [];
-
-            for (let i = 0; i < path.length - 1; i++) {
-                const [lng1, lat1] = path[i];
-                const [lng2, lat2] = path[i + 1];
-
-                // Calculate distance between points (simple approximation)
-                const distance = Math.sqrt(
-                    Math.pow(lng2 - lng1, 2) +
-                    Math.pow(lat2 - lat1, 2)
-                );
-
-                segments.push({
-                    start: path[i],
-                    end: path[i + 1],
-                    distance: distance,
-                    startDist: totalDistance
-                });
-
-                totalDistance += distance;
-            }
-
-            // Find the target distance along the path
-            const targetDistance = totalDistance * progress;
-
-            // Find the segment containing the target position
-            let targetSegment = segments[0];
-            for (const segment of segments) {
-                if (segment.startDist <= targetDistance &&
-                    segment.startDist + segment.distance >= targetDistance) {
-                    targetSegment = segment;
-                    break;
-                }
-            }
-
-            // Calculate progress within the segment
-            const segmentProgress = targetSegment.distance > 0 ?
-                (targetDistance - targetSegment.startDist) / targetSegment.distance : 0;
-
-            // Interpolate position
-            const [startLng, startLat] = targetSegment.start;
-            const [endLng, endLat] = targetSegment.end;
-
-            return [
-                startLng + (endLng - startLng) * segmentProgress,
-                startLat + (endLat - startLat) * segmentProgress
-            ];
-        }
+        // Path calculation function is now imported from geo-utils.js
     </script>
 </body>
 </html>
