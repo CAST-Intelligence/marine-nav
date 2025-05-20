@@ -46,7 +46,7 @@
         showCircle:true,
         showVectorField:false,
         showPath:true,
-        showAnimation: false,
+        showAnimation: true,
         timeValue: 0,
         timeStepValue: 0.01,
         autoPlayActive: false,
@@ -244,7 +244,7 @@
                 getLineWidth: 3
             });
 
-            // Add vessel layer to array
+            // Add circle layer to array
             allLayers.push(circleLayer);
 
             // Create path layer
@@ -328,7 +328,12 @@
                 const currentPosition = getPositionAlongPath(darwinHarborPath, timeValue);
 
                 // Calculate direction (bearing) of movement
+                // For deck.gl IconLayer: 0 = pointing up, 90 = pointing right
+                // Since our vessel icon now points north (up), we want 0 bearing to follow the path
+
+                // Default bearing is north (0 degrees), appropriate for the start of our path
                 let bearing = 0;
+
                 if (timeValue < 1) {
                     const nextIndex = Math.min(
                         Math.ceil(timeValue * (darwinHarborPath.length - 1)),
@@ -339,7 +344,28 @@
                     // Calculate bearing between current point and next point
                     const [lng1, lat1] = darwinHarborPath[prevIndex];
                     const [lng2, lat2] = darwinHarborPath[nextIndex];
-                    bearing = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
+
+                    // Calculate proper geographic bearing
+                    // Remember: deck.gl uses 0 = up, 90 = right, 180 = down, 270 = left
+
+                    // Convert lat/lng to radians for bearing calculation
+                    const lat1Rad = lat1 * Math.PI / 180;
+                    const lat2Rad = lat2 * Math.PI / 180;
+                    const lngDiffRad = (lng2 - lng1) * Math.PI / 180;
+
+                    // Calculate X and Y components for bearing formula
+                    const X = Math.cos(lat2Rad) * Math.sin(lngDiffRad);
+                    const Y = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lngDiffRad);
+
+                    // Calculate bearing in radians and convert to degrees
+                    const bearingRad = Math.atan2(X, Y);
+                    const bearingDegrees = bearingRad * 180 / Math.PI;
+
+                    // For deck.gl, 0° = north and we rotate clockwise
+                    // Our SVG icon points up at 0°, which aligns with north
+                    bearing = bearingDegrees;
+                    console.log('bearing',bearing)
                 }
 
                 // Create the animated vessel layer using the USV icon
@@ -361,7 +387,7 @@
                     getIcon: d => 'usv',
                     getPosition: d => d.position,
                     getSize: d => d.size,
-                    getColor: [255, 0, 255],
+                    // Removed getColor to preserve original SVG colors
                     getAngle: d => d.angle,
                     sizeScale: 1,
                     sizeUnits: 'pixels',
