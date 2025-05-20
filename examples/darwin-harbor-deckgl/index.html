@@ -51,16 +51,19 @@
         timeStepValue: 0.01,
         autoPlayActive: false,
         usvId: '33',
-        frameInterval: 60
+        frameInterval: 60,
+        testBearing: 0,
+        testRotation: 0,
+        showTestIcon: true
     }"
     data-on-load="
-        setupMap($lat, $lng, $showCircle,$showPath,$showVectorField);
+        setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon);
     "
 
     data-on-signal-change="
         //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
         // Single function handling both position and visibility changes
-        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue);
+        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon);
     "
 >
 
@@ -144,6 +147,25 @@
                      <p data-text="$showPath"></p>
                 </div>
             </div>
+
+            <!-- Debugging Section -->
+            <div class="control-section">
+                <h3>Debug Icon</h3>
+                <div class="control-group">
+                    <label>Show Test Icon:</label>
+                    <input type="checkbox" data-bind="showTestIcon" />
+                </div>
+                <div class="control-group">
+                    <label>Test Bearing (0-360°):</label>
+                    <input type="range" min="0" max="360" step="1" data-bind="testBearing" />
+                    <span class="value-display" data-text="$testBearing + '°'"></span>
+                </div>
+                <div class="control-group">
+                    <label>Test Rotation (-360° to 360°):</label>
+                    <input type="range" min="-360" max="360" step="1" data-bind="testRotation" />
+                    <span class="value-display" data-text="$testRotation + '°'"></span>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -186,7 +208,8 @@
         ];
         
         // Initialize the map and deck.gl overlay
-        window.setupMap = function(initialLat, initialLng, showCircle, showPath, showVectorField) {
+        window.setupMap = function(initialLat, initialLng, showCircle, showPath, showVectorField,
+                              showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
 
             // Create the MapLibre map
@@ -209,12 +232,13 @@
                 map.addControl(deckOverlay);
 
                 // Now create the initial layers - will update the overlay automatically
-                createLayers(initialLat, initialLng, showCircle, showPath, showVectorField);
+                createLayers(initialLat, initialLng, showCircle, showPath, showVectorField,
+                             showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon);
             });
         }
         
         // Function to create or update all layers - handles both position and visibility
-        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue) {
+        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon) {
             if (!deckOverlay) return; // Skip if overlay isn't initialized
 
             // console.log(`Creating layers: lat=${lat}, lng=${lng}, showCircle=${showCircle}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
@@ -376,7 +400,7 @@
                             position: currentPosition,
                             icon: 'usv',
                             size: 40,
-                            angle: bearing
+                            angle: -bearing
                         }
                     ],
                     pickable: true,
@@ -397,6 +421,46 @@
 
                 // Add trip layer to array
                 allLayers.push(tripLayer);
+            }
+
+            // Add a test icon 1km north and 1km west of the current position
+            if (showTestIcon) {
+                // Calculate position 1km north and 1km west of reset position using current position
+                // Instead of initialLat/initialLng which are not defined in this scope
+                const testLat = calculateNewLatitude(lat, lng, 1.0, 0); // 1km north
+                const testLng = calculateNewLongitude(testLat, lng, 1.0, 270); // 1km west
+
+                console.log(`Test icon at ${testLat.toFixed(6)}, ${testLng.toFixed(6)}, bearing: ${testBearing}°, rotation: ${testRotation}°`);
+
+                // Create a test icon layer for debugging rotation/bearing
+                const testIconLayer = new deck.IconLayer({
+                    id: 'test-icon-layer',
+                    data: [
+                        {
+                            position: [testLng, testLat],
+                            icon: 'usv',
+                            size: 60, // Larger than the animation icon for clarity
+                            // Apply both rotation and bearing for testing
+                            angle: testBearing + testRotation
+                        }
+                    ],
+                    pickable: true,
+                    iconAtlas: createUsvIconAtlas('T'),
+                    iconMapping: {
+                        usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                    },
+                    getIcon: d => 'usv',
+                    getPosition: d => d.position,
+                    getSize: d => d.size,
+                    getAngle: d => d.angle,
+                    sizeScale: 1,
+                    sizeUnits: 'pixels',
+                    sizeMinPixels: 30,
+                    visible: true
+                });
+
+                // Add test icon layer to array
+                allLayers.push(testIconLayer);
             }
 
             // Update the overlay with all layers
