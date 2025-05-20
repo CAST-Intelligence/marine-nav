@@ -8,97 +8,15 @@
     <!-- MapLibre -->
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
-    
+
     <!-- deck.gl -->
     <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
-    
+
     <!-- Datastar JS -->
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
-    
-    <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        #map { 
-            flex-grow: 1;
-            width: 100%;
-        }
-        .controls {
-            background-color: white;
-            padding: 15px;
-            border-bottom: 1px solid #ccc;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .info {
-            margin-top: 5px;
-            font-size: 12px;
-            color: #666;
-        }
-        label {
-            width: 100px;
-            font-weight: bold;
-        }
-        input[type="range"] {
-            flex-grow: 1;
-            max-width: 400px;
-        }
-        .value-display {
-            min-width: 100px;
-            text-align: left;
-        }
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background-color: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 1000;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 5px;
-        }
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-        }
-        .tab-controls {
-            display: flex;
-            margin-bottom: 10px;
-        }
-        .tab {
-            padding: 10px 15px;
-            background-color: #f0f0f0;
-            border: 1px solid #ccc;
-            cursor: pointer;
-            margin-right: 5px;
-        }
-        .tab.active {
-            background-color: #fff;
-            border-bottom: 1px solid #fff;
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-    </style>
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body
     data-signals="{
@@ -107,95 +25,105 @@
         kmPerIncrement: 0.5,
         initialLat: -12.4634,
         initialLng: 130.8456,
-        showVectorField: true,
-        showPath: true,
-        activeTab: 'navigation',
+        showVectorField:true,
+        showPath:true,
         timeValue: 0,
         timeStepValue: 0.01,
         autoPlayActive: false,
         usvId: '33',
-        showAnimation: true
+        showAnimation: true,
+        bool:true
     }"
     data-on-load="
         setupMap($lat, $lng);
     "
+
     data-on-signal-change="
+        console.log($showVectorField,$showPath,$bool);
         updateMap($lat, $lng);
         toggleLayers($showVectorField, $showPath, $showAnimation);
         updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue);
     "
 >
+
+       
     <div class="controls">
         <h2>Darwin Harbor Navigation</h2>
         
-        <div class="tab-controls">
-            <div class="tab" data-class-active="$activeTab === 'navigation'" data-on-click="$activeTab = 'navigation'">Navigation</div>
-            <div class="tab" data-class-active="$activeTab === 'animation'" data-on-click="$activeTab = 'animation'">Animation</div>
-            <div class="tab" data-class-active="$activeTab === 'layers'" data-on-click="$activeTab = 'layers'">Layers</div>
-            <div class="tab" data-class-active="$activeTab === 'info'" data-on-click="$activeTab = 'info'">Info</div>
-        </div>
-        
-        <div class="tab-content" data-class-active="$activeTab === 'navigation'">
-            <div class="control-group">
-                <label>Latitude:</label>
-                <input type="range" min="-12.5" max="-12.4" step="0.0001" data-bind-lat />
-                <span class="value-display" data-text="$lat.toFixed(6)"></span>
+        <div class="control-panel">
+            <!-- Navigation Section -->
+            <div class="control-section">
+                <h3>Navigation</h3>
+                <div class="control-group">
+                    <label>Latitude:</label>
+                    <input type="range" min="-12.5" max="-12.4" step="0.0001" data-bind-lat />
+                    <span class="value-display" data-text="$lat.toFixed(6)"></span>
+                   </div>
+                <div class="control-group">
+                    <label>Longitude:</label>
+                    <input type="range" min="130.7" max="130.9" step="0.0001" data-bind-lng />
+                    <span class="value-display" data-text="$lng.toFixed(6)"></span>
+                </div>
+                <div class="control-group">
+                    <!-- Using DataStar conventions for button actions -->
+                    <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 0.5km</button>
+                    <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 0.5km</button>
+                    <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 0.5km</button>
+                    <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 0.5km</button>
+                    <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
+                </div>
             </div>
-            <div class="control-group">
-                <label>Longitude:</label>
-                <input type="range" min="130.7" max="130.9" step="0.0001" data-bind-lng />
-                <span class="value-display" data-text="$lng.toFixed(6)"></span>
-            </div>
-            <div class="control-group">
-                <!-- Using DataStar conventions for button actions -->
-                <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 0)">Move North 0.5km</button>
-                <button data-on-click="$lat = calculateNewLatitude($lat, $lng, $kmPerIncrement, 180)">Move South 0.5km</button>
-                <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 90)">Move East 0.5km</button>
-                <button data-on-click="$lng = calculateNewLongitude($lat, $lng, $kmPerIncrement, 270)">Move West 0.5km</button>
-                <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
-            </div>
-        </div>
 
-        <div class="tab-content" data-class-active="$activeTab === 'animation'">
-            <div class="control-group">
-                <label>USV ID:</label>
-                <input type="text" data-bind-usvId style="width: 50px" />
+            <!-- Animation Section -->
+            <div class="control-section">
+                <h3>Animation</h3>
+                <div class="control-group">
+                    <label>USV ID:</label>
+                    <input type="text" data-bind-usvId style="width: 50px" />
+                </div>
+                <div class="control-group">
+                    <label>Animation:</label>
+                    <input type="range" min="0" max="1" step="0.01" data-bind-timeValue />
+                    <span class="value-display" data-text="Math.round($timeValue * 100) + '%'"></span>
+                </div>
+                <div class="control-group">
+                    <label>Speed:</label>
+                    <input type="range" min="0.001" max="0.05" step="0.001" data-bind-timeStepValue />
+                    <span class="value-display" data-text="$timeStepValue.toFixed(3)"></span>
+                </div>
+                <div class="control-group">
+                    <button data-on-click="$timeValue = 0">Reset</button>
+                    <button data-on-click="$autoPlayActive = !$autoPlayActive" data-text="$autoPlayActive ? 'Pause' : 'Play'"></button>
+                    <button data-on-click="$timeValue = Math.min($timeValue + 0.1, 1)">+10%</button>
+                    <button data-on-click="$timeValue = Math.max($timeValue - 0.1, 0)">-10%</button>
+                </div>
+                <div class="control-group">
+                    <label>Show Animation:</label>
+                    <input type="checkbox" data-bind-showAnimation />
+                </div>
             </div>
-            <div class="control-group">
-                <label>Animation:</label>
-                <input type="range" min="0" max="1" step="0.01" data-bind-timeValue />
-                <span class="value-display" data-text="Math.round($timeValue * 100) + '%'"></span>
-            </div>
-            <div class="control-group">
-                <label>Speed:</label>
-                <input type="range" min="0.001" max="0.05" step="0.001" data-bind-timeStepValue />
-                <span class="value-display" data-text="$timeStepValue.toFixed(3)"></span>
-            </div>
-            <div class="control-group">
-                <button data-on-click="$timeValue = 0">Reset</button>
-                <button data-on-click="$autoPlayActive = !$autoPlayActive" data-text="$autoPlayActive ? 'Pause' : 'Play'"></button>
-                <button data-on-click="$timeValue = Math.min($timeValue + 0.1, 1)">+10%</button>
-                <button data-on-click="$timeValue = Math.max($timeValue - 0.1, 0)">-10%</button>
-            </div>
-            <div class="control-group">
-                <label>Show Animation:</label>
-                <input type="checkbox" data-bind-showAnimation />
-            </div>
-        </div>
 
-        <div class="tab-content" data-class-active="$activeTab === 'layers'">
-            <div class="control-group">
-                <label>Vector Field:</label>
-                <input type="checkbox" data-bind-showVectorField />
-                <label>Navigation Path:</label>
-                <input type="checkbox" data-bind-showPath />
+            <!-- Layers Section -->
+            <div class="control-section">
+                <h3>Layers</h3>
+                <div class="control-group">
+                    <label>Vector Field:</label>
+                    <input type="checkbox" data-bind-showVectorField/>
+                    <div data-text="$showVectorField">
+                    I will be replaced with the contents of the showVectorField signal
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>Navigation Path:</label>
+                    <input type="checkbox" data-bind-showPath />
+                     <p data-text="$showPath"></p>
+                </div>
+                  <label>
+    <span>Checkbox</span>
+    <input type="checkbox" data-bind-bool />
+    <p data-text="$bool"></p>
+  </label>
             </div>
-        </div>
-        
-        <div class="tab-content" data-class-active="$activeTab === 'info'">
-            <p>This visualization shows marine navigation in Darwin Harbor, Australia.</p>
-            <p>Use the controls to move the vessel and toggle different data layers.</p>
-            <p>The vector field represents ocean currents, and the path shows a pre-calculated navigation route.</p>
         </div>
     </div>
     
@@ -599,7 +527,7 @@
                 getIcon: d => 'usv',
                 getPosition: d => d.position,
                 getSize: d => d.size,
-                getColor: [255, 255, 255],
+                getColor: [255, 0, 255],
                 getAngle: d => d.angle,
                 sizeScale: 1,
                 sizeUnits: 'pixels',
