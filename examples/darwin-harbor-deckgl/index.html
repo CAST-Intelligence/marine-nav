@@ -109,14 +109,20 @@
         initialLng: 130.8456,
         showVectorField: true,
         showPath: true,
-        activeTab: 'navigation'
+        activeTab: 'navigation',
+        timeValue: 0,
+        timeStepValue: 0.01,
+        autoPlayActive: false,
+        usvId: '33',
+        showAnimation: true
     }"
     data-on-load="
         setupMap($lat, $lng);
     "
     data-on-signal-change="
         updateMap($lat, $lng);
-        toggleLayers($showVectorField, $showPath);
+        toggleLayers($showVectorField, $showPath, $showAnimation);
+        updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue);
     "
 >
     <div class="controls">
@@ -124,6 +130,7 @@
         
         <div class="tab-controls">
             <div class="tab" data-class-active="$activeTab === 'navigation'" data-on-click="$activeTab = 'navigation'">Navigation</div>
+            <div class="tab" data-class-active="$activeTab === 'animation'" data-on-click="$activeTab = 'animation'">Animation</div>
             <div class="tab" data-class-active="$activeTab === 'layers'" data-on-click="$activeTab = 'layers'">Layers</div>
             <div class="tab" data-class-active="$activeTab === 'info'" data-on-click="$activeTab = 'info'">Info</div>
         </div>
@@ -148,13 +155,40 @@
                 <button data-on-click="$lat = $initialLat; $lng = $initialLng;">Reset Position</button>
             </div>
         </div>
-        
+
+        <div class="tab-content" data-class-active="$activeTab === 'animation'">
+            <div class="control-group">
+                <label>USV ID:</label>
+                <input type="text" data-bind-usvId style="width: 50px" />
+            </div>
+            <div class="control-group">
+                <label>Animation:</label>
+                <input type="range" min="0" max="1" step="0.01" data-bind-timeValue />
+                <span class="value-display" data-text="Math.round($timeValue * 100) + '%'"></span>
+            </div>
+            <div class="control-group">
+                <label>Speed:</label>
+                <input type="range" min="0.001" max="0.05" step="0.001" data-bind-timeStepValue />
+                <span class="value-display" data-text="$timeStepValue.toFixed(3)"></span>
+            </div>
+            <div class="control-group">
+                <button data-on-click="$timeValue = 0">Reset</button>
+                <button data-on-click="$autoPlayActive = !$autoPlayActive" data-text="$autoPlayActive ? 'Pause' : 'Play'"></button>
+                <button data-on-click="$timeValue = Math.min($timeValue + 0.1, 1)">+10%</button>
+                <button data-on-click="$timeValue = Math.max($timeValue - 0.1, 0)">-10%</button>
+            </div>
+            <div class="control-group">
+                <label>Show Animation:</label>
+                <input type="checkbox" data-bind-showAnimation />
+            </div>
+        </div>
+
         <div class="tab-content" data-class-active="$activeTab === 'layers'">
             <div class="control-group">
                 <label>Vector Field:</label>
-                <input type="checkbox" data-bind-showVectorField checked />
+                <input type="checkbox" data-bind-showVectorField />
                 <label>Navigation Path:</label>
-                <input type="checkbox" data-bind-showPath checked />
+                <input type="checkbox" data-bind-showPath />
             </div>
         </div>
         
@@ -171,10 +205,10 @@
         <h3>Legend</h3>
         <div class="legend-item">
             <div class="legend-color" style="background-color: red;"></div>
-            <span>Vessel Location</span>
+            <span>USV Vessel</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background-color: blue;"></div>
+            <div class="legend-color" style="background-color: rgba(0, 100, 200, 0.6);"></div>
             <span>Ocean Currents</span>
         </div>
         <div class="legend-item">
@@ -186,8 +220,32 @@
     <script>
         // Global variables for map and deck.gl
         let map, deckOverlay;
-        let vesselLayer, pathLayer, vectorFieldLayer;
-        let arrowAtlasURL;
+        let vesselLayer, pathLayer, vectorFieldLayer, tripLayer;
+        let arrowAtlasURL, usvIconAtlasURL;
+        let animationFrameId = null;
+
+        // Create a data URL for the USV icon (red triangle with white circle and ID number)
+        function createUsvIconAtlas(id = '33') {
+            // Only create once and cache for reuse with the same ID
+            const cacheKey = `usv-${id}`;
+            if (window[cacheKey]) return window[cacheKey];
+
+            // Create SVG for the USV icon (triangle with numbered circle)
+            const usvSVG = `
+                <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Red triangle -->
+                    <polygon points="64,0 128,112 0,112" fill="red" />
+                    <!-- White circle with ID -->
+                    <circle cx="64" cy="70" r="30" fill="white" />
+                    <!-- ID number -->
+                    <text x="64" y="80" font-family="Arial" font-size="36" font-weight="bold" text-anchor="middle" fill="black">${id}</text>
+                </svg>
+            `;
+
+            const iconURL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(usvSVG)}`;
+            window[cacheKey] = iconURL;
+            return iconURL;
+        }
 
         // Create a data URL for the arrow icon
         function createArrowAtlas() {
@@ -336,9 +394,18 @@
             }
         }
         
-        // Function to toggle layer visibility
-        window.toggleLayers = function(showVectorField, showPath) {
-            const layers = [vesselLayer]; // Always show vessel
+        // Function to toggle layer visibility - props down approach
+        window.toggleLayers = function(showVectorField, showPath, showAnimation) {
+            const layers = [];
+
+            // Use the values passed directly from DataStar signals
+            if (!showAnimation) {
+                // Show manual vessel position when animation is off
+                layers.push(vesselLayer);
+            } else if (tripLayer) {
+                // Show animated vessel with trip layer when animation is on
+                layers.push(tripLayer);
+            }
 
             if (showVectorField && Array.isArray(vectorFieldLayer)) {
                 // Add all vector field layers (lines and icons)
@@ -379,24 +446,7 @@
                 getLineWidth: 3
             });
 
-            // Update the overlay with the new layers
-            if (deckOverlay) {
-                const layers = [vesselLayer];
-
-                // Check if vector field should be shown
-                if (document.querySelector('[data-bind-showVectorField]').checked && Array.isArray(vectorFieldLayer)) {
-                    // Add all vector field layers (lines and icons)
-                    layers.push(...vectorFieldLayer);
-                }
-
-                if (document.querySelector('[data-bind-showPath]').checked) {
-                    layers.push(pathLayer);
-                }
-
-                deckOverlay.setProps({
-                    layers: layers
-                });
-            }
+            // Let toggleLayers handle layer updates - will be called by DataStar after this function
         }
         
         // Generate simulated vector field data for the harbor area
@@ -468,29 +518,177 @@
         window.calculateNewLongitude = function(lat, lng, distanceKm, bearingDegrees) {
             // Earth radius in kilometers
             const R = 6371;
-            
+
             // Convert distance and bearing to radians
             const d = distanceKm / R;
             const bearing = bearingDegrees * Math.PI / 180;
-            
+
             // Convert lat/lng to radians
             const lat1 = lat * Math.PI / 180;
             const lng1 = lng * Math.PI / 180;
-            
+
             // Calculate new latitude first (needed for longitude calculation)
             const lat2 = Math.asin(
                 Math.sin(lat1) * Math.cos(d) +
                 Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
             );
-            
+
             // Calculate new longitude
             const lng2 = lng1 + Math.atan2(
                 Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
                 Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
             );
-            
+
             // Convert back to degrees and normalize to -180 to +180
             return ((lng2 * 180 / Math.PI) + 540) % 360 - 180;
+        }
+
+        // Function to handle animation state and create trip layer - props down approach
+        window.updateAnimationState = function(timeValue, autoPlayActive, showAnimation, usvId, timeStepValue) {
+            // Cancel any existing animation frame
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            // Only process if animation is shown
+            if (!showAnimation) {
+                // Clear trip layer if it exists
+                if (tripLayer) {
+                    tripLayer = null;
+                }
+                return;
+            }
+
+            // Create trip layer based on current animation position
+
+            // Calculate current position interpolated along the path
+            const currentPosition = getPositionAlongPath(darwinHarborPath, timeValue);
+
+            // Calculate direction (bearing) of movement
+            let bearing = 0;
+            if (timeValue < 1) {
+                const nextIndex = Math.min(
+                    Math.ceil(timeValue * (darwinHarborPath.length - 1)),
+                    darwinHarborPath.length - 1
+                );
+                const prevIndex = Math.max(nextIndex - 1, 0);
+
+                // Calculate bearing between current point and next point
+                const [lng1, lat1] = darwinHarborPath[prevIndex];
+                const [lng2, lat2] = darwinHarborPath[nextIndex];
+                bearing = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
+            }
+
+            // Create the trip layer using an IconLayer for the USV
+            tripLayer = new deck.IconLayer({
+                id: 'usv-layer',
+                data: [
+                    {
+                        position: currentPosition,
+                        icon: 'usv',
+                        size: 40,
+                        angle: bearing
+                    }
+                ],
+                pickable: true,
+                iconAtlas: createUsvIconAtlas(usvId),
+                iconMapping: {
+                    usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                },
+                getIcon: d => 'usv',
+                getPosition: d => d.position,
+                getSize: d => d.size,
+                getColor: [255, 255, 255],
+                getAngle: d => d.angle,
+                sizeScale: 1,
+                sizeUnits: 'pixels',
+                sizeMinPixels: 20
+            });
+
+            // Handle auto-play animation
+            if (autoPlayActive) {
+                // Use a timeout for better performance than requestAnimationFrame
+                setTimeout(() => {
+                    // Calculate next time value based on step
+                    let newTimeValue = parseFloat(timeValue) + parseFloat(timeStepValue || 0.01);
+
+                    // Loop back to start if we reach the end
+                    if (newTimeValue > 1) {
+                        newTimeValue = 0;
+                    }
+
+                    // Use data-binding to update signal value
+                    // This will trigger a change event that DataStar will handle
+                    const timeSlider = document.querySelector('[data-bind-timeValue]');
+                    if (timeSlider) {
+                        timeSlider.value = newTimeValue;
+
+                        // Trigger change event to update DataStar signal
+                        const event = new Event('change');
+                        timeSlider.dispatchEvent(event);
+                    }
+                }, 16); // Approx. 60 fps
+            }
+        }
+
+        // Function to calculate position along a path based on progress (0-1)
+        function getPositionAlongPath(path, progress) {
+            if (!path || path.length < 2) return null;
+
+            // Handle edge cases
+            if (progress <= 0) return path[0];
+            if (progress >= 1) return path[path.length - 1];
+
+            // Calculate total path length
+            let totalDistance = 0;
+            const segments = [];
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const [lng1, lat1] = path[i];
+                const [lng2, lat2] = path[i + 1];
+
+                // Calculate distance between points (simple approximation)
+                const distance = Math.sqrt(
+                    Math.pow(lng2 - lng1, 2) +
+                    Math.pow(lat2 - lat1, 2)
+                );
+
+                segments.push({
+                    start: path[i],
+                    end: path[i + 1],
+                    distance: distance,
+                    startDist: totalDistance
+                });
+
+                totalDistance += distance;
+            }
+
+            // Find the target distance along the path
+            const targetDistance = totalDistance * progress;
+
+            // Find the segment containing the target position
+            let targetSegment = segments[0];
+            for (const segment of segments) {
+                if (segment.startDist <= targetDistance &&
+                    segment.startDist + segment.distance >= targetDistance) {
+                    targetSegment = segment;
+                    break;
+                }
+            }
+
+            // Calculate progress within the segment
+            const segmentProgress = targetSegment.distance > 0 ?
+                (targetDistance - targetSegment.startDist) / targetSegment.distance : 0;
+
+            // Interpolate position
+            const [startLng, startLat] = targetSegment.start;
+            const [endLng, endLat] = targetSegment.end;
+
+            return [
+                startLng + (endLng - startLng) * segmentProgress,
+                startLat + (endLat - startLat) * segmentProgress
+            ];
         }
     </script>
 </body>
