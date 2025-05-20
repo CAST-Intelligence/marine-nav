@@ -58,14 +58,15 @@
     "
 
     data-on-signal-change="
-       //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation});
-        updateMap($lat, $lng);
-
+        console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation});
+        // Single function handling both position and visibility changes
+        createLayers($lat, $lng, $showVessel, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue);
+        // Handle animation state separately
+        updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue);
     "
 >
 
-       <!-- // updateAnimationState($timeValue, $autoPlayActive, $showAnimation, $usvId, $timeStepValue); -->
-        <!-- toggleLayers($showVectorField, $showPath, $showAnimation);    -->
+       <!-- Comment cleaned up: these functions were combined into createLayers -->
     <div class="controls">
         <h2>Darwin Harbor Navigation</h2>
         
@@ -235,9 +236,11 @@
             });
         }
         
-        // Function to create or update all layers
-        function createLayers(lat, lng, showVessel,showPath,showVectorField) {
-            // Create vessel layer (simple circle)
+        // Function to create or update all layers - handles both position and visibility
+        function createLayers(lat, lng, showVessel, showPath, showVectorField, showAnimation, usvId, timeValue) {
+            console.log(`Creating layers: lat=${lat}, lng=${lng}, showVessel=${showVessel}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
+
+            // Create vessel layer (only visible when animation is off)
             vesselLayer = new deck.ScatterplotLayer({
                 id: 'vessel-layer',
                 data: [
@@ -247,8 +250,8 @@
                         color: [255, 0, 0, 200] // Red with opacity
                     }
                 ],
-                visible: showVessel,
-                pickable: showVessel,
+                visible: showVessel && !showAnimation, // Only show when animation is off
+                pickable: showVessel && !showAnimation,
                 stroked: true,
                 filled: true,
                 radiusUnits: 'meters',
@@ -275,7 +278,7 @@
                 getColor: d => d.color,
                 getWidth: d => d.width
             });
-            
+
             // Create vector field layer (simulated currents)
             // Generate a grid of vectors for the harbor area
             const vectorData = generateVectorField(lat, lng);
@@ -284,8 +287,8 @@
             const vectorLineLayer = new deck.LineLayer({
                 id: 'vector-line-layer',
                 data: vectorData,
-                visible:showVectorField,
-                pickable: true,
+                visible: showVectorField,
+                pickable: showVectorField,
                 getSourcePosition: d => d.sourcePosition,
                 getTargetPosition: d => d.targetPosition,
                 getColor: [0, 100, 200, 150], // Blue for water currents
@@ -298,8 +301,8 @@
             const vectorIconLayer = new deck.IconLayer({
                 id: 'vector-icon-layer',
                 data: vectorData,
-                visible:showVectorField,
-                pickable: true,
+                visible: showVectorField,
+                pickable: showVectorField,
                 iconAtlas: createArrowAtlas(),
                 iconMapping: {
                     arrow: {x: 0, y: 0, width: 128, height: 128, mask: true}
@@ -322,100 +325,91 @@
 
             // Combine line and icon layers into a single variable
             vectorFieldLayer = [vectorLineLayer, vectorIconLayer];
-            
-            // If the overlay is already initialized, update it
-            if (deckOverlay) {
-                deckOverlay.setProps({
-                    layers: [vesselLayer, pathLayer, vectorFieldLayer]
+
+            // Create or update the trip layer for animation
+            if (showAnimation && timeValue !== undefined) {
+                const currentPosition = getPositionAlongPath(darwinHarborPath, timeValue);
+
+                // Calculate direction (bearing) of movement
+                let bearing = 0;
+                if (timeValue < 1) {
+                    const nextIndex = Math.min(
+                        Math.ceil(timeValue * (darwinHarborPath.length - 1)),
+                        darwinHarborPath.length - 1
+                    );
+                    const prevIndex = Math.max(nextIndex - 1, 0);
+
+                    // Calculate bearing between current point and next point
+                    const [lng1, lat1] = darwinHarborPath[prevIndex];
+                    const [lng2, lat2] = darwinHarborPath[nextIndex];
+                    bearing = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
+                }
+
+                // Create the animated vessel layer using the USV icon
+                tripLayer = new deck.IconLayer({
+                    id: 'usv-layer',
+                    data: [
+                        {
+                            position: currentPosition,
+                            icon: 'usv',
+                            size: 40,
+                            angle: bearing
+                        }
+                    ],
+                    pickable: true,
+                    iconAtlas: createUsvIconAtlas(usvId),
+                    iconMapping: {
+                        usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                    },
+                    getIcon: d => 'usv',
+                    getPosition: d => d.position,
+                    getSize: d => d.size,
+                    getColor: [255, 0, 255],
+                    getAngle: d => d.angle,
+                    sizeScale: 1,
+                    sizeUnits: 'pixels',
+                    sizeMinPixels: 20,
+                    visible: showAnimation // Only show when animation is on
                 });
             }
-        }
-        
-        // Function to toggle layer visibility - using deck.gl's visible property as recommended in docs
-        window.toggleLayers = function(showVectorField, showPath, showAnimation) {
-            console.log(`Toggle layers: VF=${showVectorField}, Path=${showPath}, Anim=${showAnimation}`);
-            if (!deckOverlay) return; // Skip if overlay isn't initialized
 
-            // Get current layers from the overlay
-            const currentLayers = deckOverlay.props.layers || [];
-
-            // Create new array for updated layers with visibility changes
-            const updatedLayers = currentLayers.map(layer => {
-                // Handle vector field layers
-                if (layer.id === 'vector-line-layer' || layer.id === 'vector-icon-layer') {
-                    return layer.clone({visible: showVectorField});
-                }
-
-                // Handle path layer
-                if (layer.id === 'path-layer') {
-                    return layer.clone({visible: showPath});
-                }
-
-                // Handle vessel layer - show only when animation is off
-                if (layer.id === 'vessel-layer') {
-                    return layer.clone({visible: !showAnimation});
-                }
-
-                // Handle trip layer - show only when animation is on
-                if (layer.id === 'usv-layer') {
-                    return layer.clone({visible: showAnimation});
-                }
-
-                // Return other layers unchanged
-                return layer;
-            });
-
-            // Update the deck.gl overlay with the updated layer instances
-            deckOverlay.setProps({
-                layers: updatedLayers
-            });
-        }
-        
-        // Function to update vessel position when signals change (passes lat, lng as args properly)
-        window.updateMap = function(lat, lng) {
-            // Update the vessel layer with new position
-            vesselLayer = new deck.ScatterplotLayer({
-                id: 'vessel-layer',
-                data: [
-                    {
-                        position: [lng, lat],
-                        radius: 50, // 50m radius
-                        color: [255, 0, 0, 200] // Red with opacity
-                    }
-                ],
-                pickable: true,
-                stroked: true,
-                filled: true,
-                radiusUnits: 'meters',
-                getPosition: d => d.position,
-                getRadius: d => d.radius,
-                getFillColor: d => d.color,
-                getLineColor: [255, 0, 0],
-                getLineWidth: 3
-                // Visibility will be set by toggleLayers
-            });
-
-            // Update the deck.gl overlay with the new vessel layer
+            // If the overlay is already initialized, update it with all layers
             if (deckOverlay) {
-                // Get the current layers from the overlay
-                const currentLayers = deckOverlay.props.layers || [];
+                const allLayers = [];
 
-                // Filter out any existing vessel layers
-                const otherLayers = currentLayers.filter(layer => layer.id !== 'vessel-layer');
+                // Add vessel layer
+                if (vesselLayer) {
+                    allLayers.push(vesselLayer);
+                }
 
-                // Add the new vessel layer
-                const updatedLayers = [...otherLayers, vesselLayer];
+                // Add path layer
+                if (pathLayer) {
+                    allLayers.push(pathLayer);
+                }
+
+                // Add vector field layers
+                if (Array.isArray(vectorFieldLayer)) {
+                    allLayers.push(...vectorFieldLayer);
+                }
+
+                // Add trip layer if it exists (animation)
+                if (tripLayer && showAnimation) {
+                    allLayers.push(tripLayer);
+                }
 
                 // Update the overlay with all layers
                 deckOverlay.setProps({
-                    layers: updatedLayers
+                    layers: allLayers
                 });
             }
         }
         
+        // The toggleLayers and updateMap functions have been combined into the createLayers function
+        // This simplified approach creates all layers with correct positions and visibility in one function
+        
         // Geographic utility functions are now imported from geo-utils.js
 
-        // Function to handle animation state and create trip layer - props down approach
+        // Function to handle animation state - just manages animation loop, not layer creation
         window.updateAnimationState = function(timeValue, autoPlayActive, showAnimation, usvId, timeStepValue) {
             // Cancel any existing animation frame
             if (animationFrameId) {
@@ -423,67 +417,7 @@
                 animationFrameId = null;
             }
 
-            // Calculate current position interpolated along the path
-            const currentPosition = getPositionAlongPath(darwinHarborPath, timeValue);
-
-            // Calculate direction (bearing) of movement
-            let bearing = 0;
-            if (timeValue < 1) {
-                const nextIndex = Math.min(
-                    Math.ceil(timeValue * (darwinHarborPath.length - 1)),
-                    darwinHarborPath.length - 1
-                );
-                const prevIndex = Math.max(nextIndex - 1, 0);
-
-                // Calculate bearing between current point and next point
-                const [lng1, lat1] = darwinHarborPath[prevIndex];
-                const [lng2, lat2] = darwinHarborPath[nextIndex];
-                bearing = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
-            }
-
-            // Create or update trip layer using an IconLayer for the USV
-            tripLayer = new deck.IconLayer({
-                id: 'usv-layer',
-                data: [
-                    {
-                        position: currentPosition,
-                        icon: 'usv',
-                        size: 40,
-                        angle: bearing
-                    }
-                ],
-                pickable: true,
-                iconAtlas: createUsvIconAtlas(usvId),
-                iconMapping: {
-                    usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
-                },
-                getIcon: d => 'usv',
-                getPosition: d => d.position,
-                getSize: d => d.size,
-                getColor: [255, 0, 255],
-                getAngle: d => d.angle,
-                sizeScale: 1,
-                sizeUnits: 'pixels',
-                sizeMinPixels: 20,
-                visible: showAnimation // Set visibility based on showAnimation signal
-            });
-
-            // Update the deck.gl overlay with the new trip layer
-            if (deckOverlay) {
-                // Get the current layers from the overlay
-                const currentLayers = deckOverlay.props.layers || [];
-
-                // Filter out any existing trip layers
-                const otherLayers = currentLayers.filter(layer => layer.id !== 'usv-layer');
-
-                // Add the new trip layer
-                const updatedLayers = [...otherLayers, tripLayer];
-
-                // Update the overlay with all layers
-                deckOverlay.setProps({
-                    layers: updatedLayers
-                });
-            }
+            // Note: layer creation is now handled in createLayers
 
             // Handle auto-play animation using DataStar's pattern
             if (autoPlayActive) {
