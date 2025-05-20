@@ -187,6 +187,22 @@
         // Global variables for map and deck.gl
         let map, deckOverlay;
         let vesselLayer, pathLayer, vectorFieldLayer;
+        let arrowAtlasURL;
+
+        // Create a data URL for the arrow icon
+        function createArrowAtlas() {
+            // Only create once and cache for reuse
+            if (arrowAtlasURL) return arrowAtlasURL;
+
+            const arrowSVG = `
+                <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="64,0 128,128 64,96 0,128" fill="white" />
+                </svg>
+            `;
+
+            arrowAtlasURL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(arrowSVG)}`;
+            return arrowAtlasURL;
+        }
         
         // Darwin Harbor navigation path (approximate coordinates)
         const darwinHarborPath = [
@@ -271,9 +287,9 @@
             // Generate a grid of vectors for the harbor area
             const vectorData = generateVectorField(lat, lng);
 
-            // Create LineLayer for vectors
-            vectorFieldLayer = new deck.LineLayer({
-                id: 'vector-field-layer',
+            // Create LineLayer for vector lines
+            const vectorLineLayer = new deck.LineLayer({
+                id: 'vector-line-layer',
                 data: vectorData,
                 pickable: true,
                 getSourcePosition: d => d.sourcePosition,
@@ -283,6 +299,34 @@
                 widthUnits: 'pixels',
                 widthMinPixels: 1
             });
+
+            // Create IconLayer for vector arrowheads
+            const vectorIconLayer = new deck.IconLayer({
+                id: 'vector-icon-layer',
+                data: vectorData,
+                pickable: true,
+                iconAtlas: createArrowAtlas(),
+                iconMapping: {
+                    arrow: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                },
+                getIcon: d => 'arrow',
+                getPosition: d => d.targetPosition,
+                getSize: 12,
+                getColor: [0, 100, 200, 200],
+                // Calculate angle based on vector direction
+                getAngle: d => {
+                    const dx = d.targetPosition[0] - d.sourcePosition[0];
+                    const dy = d.targetPosition[1] - d.sourcePosition[1];
+                    // Convert to degrees and adjust for deck.gl rotation system
+                    return Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                },
+                sizeScale: 1,
+                sizeUnits: 'pixels',
+                sizeMinPixels: 6
+            });
+
+            // Combine line and icon layers into a single variable
+            vectorFieldLayer = [vectorLineLayer, vectorIconLayer];
             
             // If the overlay is already initialized, update it
             if (deckOverlay) {
@@ -295,15 +339,16 @@
         // Function to toggle layer visibility
         window.toggleLayers = function(showVectorField, showPath) {
             const layers = [vesselLayer]; // Always show vessel
-            
-            if (showVectorField) {
-                layers.push(vectorFieldLayer);
+
+            if (showVectorField && Array.isArray(vectorFieldLayer)) {
+                // Add all vector field layers (lines and icons)
+                layers.push(...vectorFieldLayer);
             }
-            
+
             if (showPath) {
                 layers.push(pathLayer);
             }
-            
+
             if (deckOverlay) {
                 deckOverlay.setProps({
                     layers: layers
@@ -333,19 +378,21 @@
                 getLineColor: [255, 0, 0],
                 getLineWidth: 3
             });
-            
+
             // Update the overlay with the new layers
             if (deckOverlay) {
                 const layers = [vesselLayer];
-                
-                if (document.querySelector('[data-bind-showVectorField]').checked) {
-                    layers.push(vectorFieldLayer);
+
+                // Check if vector field should be shown
+                if (document.querySelector('[data-bind-showVectorField]').checked && Array.isArray(vectorFieldLayer)) {
+                    // Add all vector field layers (lines and icons)
+                    layers.push(...vectorFieldLayer);
                 }
-                
+
                 if (document.querySelector('[data-bind-showPath]').checked) {
                     layers.push(pathLayer);
                 }
-                
+
                 deckOverlay.setProps({
                     layers: layers
                 });
