@@ -60,3 +60,5 @@ examples/datastar-pixijs-component/main
 **/.claude/settings.local.json
 examples/datastar-pixijs-boids/boids-simulation
 examples/datastar-leaflet-pixi/map-visualization
+ai_docs/
+_archive
