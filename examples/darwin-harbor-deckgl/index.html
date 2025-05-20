@@ -79,7 +79,8 @@
                 <h3>Animation</h3>
                 <div class="control-group">
                     <label>USV ID:</label>
-                    <input type="text" data-bind-usvId style="width: 50px" />
+                    <input type="text" data-bind="usvId" style="width: 50px" />
+                    <div data-text="$usvId">usvId!!!</div>
                 </div>
                 <div class="control-group">
                     <label>Animation:</label>
@@ -108,14 +109,14 @@
                 <h3>Layers</h3>
                 <div class="control-group">
                     <label>Vector Field:</label>
-                    <input type="checkbox" data-bind-showVectorField/>
+                    <input type="checkbox" data-bind="showVectorField"/>
                     <div data-text="$showVectorField">
                     I will be replaced with the contents of the showVectorField signal
                     </div>
                 </div>
                 <div class="control-group">
                     <label>Navigation Path:</label>
-                    <input type="checkbox" data-bind-showPath />
+                    <input type="checkbox" data-bind="showPath" />
                      <p data-text="$showPath"></p>
                 </div>
                   <label>
