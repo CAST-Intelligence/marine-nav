@@ -51,7 +51,6 @@
         timeStepValue: 0.01,
         autoPlayActive: false,
         usvId: '33',
-        bool:true
     }"
     data-on-load="
         setupMap($lat, $lng, $showVessel,$showPath,$showVectorField);
@@ -139,11 +138,6 @@
                     <input type="checkbox" data-bind="showPath" />
                      <p data-text="$showPath"></p>
                 </div>
-                  <label>
-    <span>Checkbox</span>
-    <input type="checkbox" data-bind-bool />
-    <p data-text="$bool"></p>
-  </label>
             </div>
         </div>
     </div>
@@ -169,8 +163,6 @@
     <script>
         // Global variables for map and deck.gl
         let map, deckOverlay;
-        let vesselLayer, pathLayer, vectorFieldLayer, tripLayer;
-        let arrowAtlasURL, usvIconAtlasURL;
         let animationFrameId = null;
 
         // Icon creation functions are now imported from icons.js
@@ -188,7 +180,7 @@
         ];
         
         // Initialize the map and deck.gl overlay
-        window.setupMap = function(initialLat, initialLng,showVessel,showPath,showVectorField) {
+        window.setupMap = function(initialLat, initialLng, showVessel, showPath, showVectorField) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
 
             // Create the MapLibre map
@@ -201,47 +193,31 @@
 
             // Wait for the map to load
             map.on('load', () => {
-                // Create the initial layers
-                createLayers(initialLat, initialLng,showVessel,showPath,showVectorField);
-
-                // Create the deck.gl overlay with all layers
-                // Layer visibility will be set by toggleLayers
-                const allLayers = [];
-
-                // Add vessel layer
-                if (vesselLayer) {
-                    allLayers.push(vesselLayer);
-                }
-
-                // Add path layer
-                if (pathLayer) {
-                    allLayers.push(pathLayer);
-                }
-
-                // Add vector field layers
-                if (Array.isArray(vectorFieldLayer)) {
-                    allLayers.push(...vectorFieldLayer);
-                } else if (vectorFieldLayer) {
-                    allLayers.push(vectorFieldLayer);
-                }
-
-                // Create the overlay with all layers
+                // Create the initial empty deck.gl overlay
                 deckOverlay = new deck.MapboxOverlay({
                     interleaved: true,
-                    layers: allLayers
+                    layers: [] // Start with empty layers
                 });
 
                 // Add the overlay to the map
                 map.addControl(deckOverlay);
+
+                // Now create the initial layers - will update the overlay automatically
+                createLayers(initialLat, initialLng, showVessel, showPath, showVectorField);
             });
         }
         
         // Function to create or update all layers - handles both position and visibility
         function createLayers(lat, lng, showVessel, showPath, showVectorField, showAnimation, usvId, timeValue) {
+            if (!deckOverlay) return; // Skip if overlay isn't initialized
+
             console.log(`Creating layers: lat=${lat}, lng=${lng}, showVessel=${showVessel}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
 
+            // Prepare array to hold all layers
+            const allLayers = [];
+
             // Create vessel layer (only visible when animation is off)
-            vesselLayer = new deck.ScatterplotLayer({
+            const vesselLayer = new deck.ScatterplotLayer({
                 id: 'vessel-layer',
                 data: [
                     {
@@ -261,9 +237,12 @@
                 getLineColor: [255, 0, 0],
                 getLineWidth: 3
             });
-            
+
+            // Add vessel layer to array
+            allLayers.push(vesselLayer);
+
             // Create path layer
-            pathLayer = new deck.PathLayer({
+            const pathLayer = new deck.PathLayer({
                 id: 'path-layer',
                 data: [{
                     path: darwinHarborPath,
@@ -278,6 +257,9 @@
                 getColor: d => d.color,
                 getWidth: d => d.width
             });
+
+            // Add path layer to array
+            allLayers.push(pathLayer);
 
             // Create vector field layer (simulated currents)
             // Generate a grid of vectors for the harbor area
@@ -296,6 +278,9 @@
                 widthUnits: 'pixels',
                 widthMinPixels: 1
             });
+
+            // Add vector line layer to array
+            allLayers.push(vectorLineLayer);
 
             // Create IconLayer for vector arrowheads
             const vectorIconLayer = new deck.IconLayer({
@@ -323,8 +308,8 @@
                 sizeMinPixels: 6
             });
 
-            // Combine line and icon layers into a single variable
-            vectorFieldLayer = [vectorLineLayer, vectorIconLayer];
+            // Add vector icon layer to array
+            allLayers.push(vectorIconLayer);
 
             // Create or update the trip layer for animation
             if (showAnimation && timeValue !== undefined) {
@@ -346,7 +331,7 @@
                 }
 
                 // Create the animated vessel layer using the USV icon
-                tripLayer = new deck.IconLayer({
+                const tripLayer = new deck.IconLayer({
                     id: 'usv-layer',
                     data: [
                         {
@@ -371,39 +356,17 @@
                     sizeMinPixels: 20,
                     visible: showAnimation // Only show when animation is on
                 });
+
+                // Add trip layer to array
+                allLayers.push(tripLayer);
             }
 
-            // If the overlay is already initialized, update it with all layers
-            if (deckOverlay) {
-                const allLayers = [];
-
-                // Add vessel layer
-                if (vesselLayer) {
-                    allLayers.push(vesselLayer);
-                }
-
-                // Add path layer
-                if (pathLayer) {
-                    allLayers.push(pathLayer);
-                }
-
-                // Add vector field layers
-                if (Array.isArray(vectorFieldLayer)) {
-                    allLayers.push(...vectorFieldLayer);
-                }
-
-                // Add trip layer if it exists (animation)
-                if (tripLayer && showAnimation) {
-                    allLayers.push(tripLayer);
-                }
-
-                // Update the overlay with all layers
-                deckOverlay.setProps({
-                    layers: allLayers
-                });
-            }
+            // Update the overlay with all layers
+            deckOverlay.setProps({
+                layers: allLayers
+            });
         }
-        
+
         // The toggleLayers and updateMap functions have been combined into the createLayers function
         // This simplified approach creates all layers with correct positions and visibility in one function
         
