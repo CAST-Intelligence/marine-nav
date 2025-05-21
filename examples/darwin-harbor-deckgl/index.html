@@ -404,14 +404,13 @@
                         }
                     ],
                     pickable: true,
-                    iconAtlas: createUsvIconAtlas(usvId),
+                    iconAtlas: createUsvIconAtlas(),
                     iconMapping: {
-                        usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                        usv: {x: 0, y: 0, width: 128, height: 128, mask: false}
                     },
                     getIcon: d => 'usv',
                     getPosition: d => d.position,
                     getSize: d => d.size,
-                    // Removed getColor to preserve original SVG colors
                     getAngle: d => d.angle,
                     sizeScale: 1,
                     sizeUnits: 'pixels',
@@ -421,6 +420,32 @@
 
                 // Add trip layer to array
                 allLayers.push(tripLayer);
+
+                // Add a separate text layer for the USV ID that doesn't rotate with the icon
+                const textLayer = new deck.TextLayer({
+                    id: 'usv-id-layer',
+                    data: [
+                        {
+                            position: currentPosition,
+                            text: usvId.toString()
+                        }
+                    ],
+                    getPosition: d => d.position,
+                    getText: d => d.text,
+                    getSize: 12,
+                    getColor: [0, 0, 0, 255],
+                    getTextAnchor: 'middle',
+                    getAlignmentBaseline: 'center',
+                    fontFamily: 'Arial',
+                    fontWeight: 'bold',
+                    // We can offset the text layer slightly to position it better relative to the icon
+                    getPixelOffset: [0, -25], // Adjust these values to position the text as needed
+                    sizeUnits: 'pixels',
+                    visible: showAnimation
+                });
+
+                // Add text layer to array
+                allLayers.push(textLayer);
             }
 
             // Add a test icon 1km north and 1km west of the current position
@@ -445,9 +470,9 @@
                         }
                     ],
                     pickable: true,
-                    iconAtlas: createUsvIconAtlas('T'),
+                    iconAtlas: createUsvIconAtlas(),
                     iconMapping: {
-                        usv: {x: 0, y: 0, width: 128, height: 128, mask: true}
+                        usv: {x: 0, y: 0, width: 128, height: 128, mask: false}
                     },
                     getIcon: d => 'usv',
                     getPosition: d => d.position,
@@ -461,6 +486,30 @@
 
                 // Add test icon layer to array
                 allLayers.push(testIconLayer);
+
+                // Add a separate text layer for the test icon label
+                const testTextLayer = new deck.TextLayer({
+                    id: 'test-text-layer',
+                    data: [
+                        {
+                            position: [testLng, testLat],
+                            text: 'T'
+                        }
+                    ],
+                    getPosition: d => d.position,
+                    getText: d => d.text,
+                    getSize: 18,
+                    getColor: [0, 0, 0, 255],
+                    getTextAnchor: 'middle',
+                    getAlignmentBaseline: 'center',
+                    fontFamily: 'Arial',
+                    fontWeight: 'bold',
+                    sizeUnits: 'pixels',
+                    visible: true
+                });
+
+                // Add test text layer to array
+                allLayers.push(testTextLayer);
             }
 
             // Update the overlay with all layers

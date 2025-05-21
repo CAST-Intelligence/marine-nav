@@ -22,11 +22,11 @@ export function createUsvIconAtlas(id = '33') {
         <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
             <!-- Red isosceles triangle (narrower, more pointed) -->
             <!-- Initial position pointing NORTH (upward) -->
-            <polygon points="64,0 96,112 32,112" fill="red" />
-            <!-- White circle with ID (temporarily commented out for clarity) -->
-            <!-- <circle cx="64" cy="70" r="30" fill="white" /> -->
-            <!-- ID number -->
-            <text x="64" y="80" font-family="Arial" font-size="36" font-weight="bold" text-anchor="middle" fill="black">${id}</text>
+            <polygon points="64,0 96,112 32,112" style="fill:#FF0000;stroke-width:0" />
+            <!-- White circle with ID -->
+            <circle cx="64" cy="70" r="10" style="fill:#FFFFFF;stroke-width:0" />
+            <!-- ID number vertically centered in the circle -->
+            <!-- <text x="64" y="83" font-family="Arial" font-size="25" font-weight="bold" text-anchor="middle" dominant-baseline="middle" style="fill:#000000;stroke-width:0">${id}</text> -->
         </svg>
     `;
 
@@ -45,7 +45,7 @@ export function createArrowAtlas() {
 
     const arrowSVG = `
         <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="64,0 128,128 64,96 0,128" fill="white" />
+            <polygon points="64,0 128,128 64,96 0,128" style="fill:#4287f5;stroke-width:0" />
         </svg>
     `;
 
