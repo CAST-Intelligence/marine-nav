@@ -54,16 +54,22 @@
         frameInterval: 60,
         testBearing: 0,
         testRotation: 0,
-        showTestIcon: true
+        showTestIcon: true,
+        showRadar: true,
+        radarAngle: 0
     }"
     data-on-load="
-        setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon);
+        setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle);
     "
 
     data-on-signal-change="
         //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
         // Single function handling both position and visibility changes
-        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon);
+        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle);
+    "
+
+    data-on-interval__duration.50ms="
+        $radarAngle = ($radarAngle + 15) % 360;
     "
 >
 
@@ -128,6 +134,10 @@
                 <div class="control-group">
                     <label>Show Animation:</label>
                     <input type="checkbox" data-bind="showAnimation" />
+                </div>
+                <div class="control-group">
+                    <label>Show Radar:</label>
+                    <input type="checkbox" data-bind="showRadar" />
                 </div>
             </div>
 
@@ -209,7 +219,8 @@
         
         // Initialize the map and deck.gl overlay
         window.setupMap = function(initialLat, initialLng, showCircle, showPath, showVectorField,
-                              showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon) {
+                              showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon,
+                              showRadar, radarAngle) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
 
             // Create the MapLibre map
@@ -233,12 +244,13 @@
 
                 // Now create the initial layers - will update the overlay automatically
                 createLayers(initialLat, initialLng, showCircle, showPath, showVectorField,
-                             showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon);
+                             showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon,
+                             showRadar, radarAngle);
             });
         }
         
         // Function to create or update all layers - handles both position and visibility
-        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon) {
+        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon, showRadar, radarAngle) {
             if (!deckOverlay) return; // Skip if overlay isn't initialized
 
             // console.log(`Creating layers: lat=${lat}, lng=${lng}, showCircle=${showCircle}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
@@ -446,6 +458,112 @@
 
                 // Add text layer to array
                 allLayers.push(textLayer);
+
+                // Add radar scanning effect if enabled
+                if (showRadar && showAnimation) {
+                    // Get the vessel size in pixels (to scale radar with zoom)
+                    const vesselSizePixels = 40; // Same as the vessel icon size
+                    const radarScale = 80; // Scale factor (radar will be 80x the vessel size = 20x larger than before)
+                    const radarLengthPixels = vesselSizePixels * radarScale;
+
+                    // We'll create the radar in screen space (pixels) but need geographic coordinates
+                    // First define small distance function to convert pixel distance to geographic position
+                    function pixelDistanceToGeo(lat, lng, bearing, distancePixels) {
+                        // Convert pixels to approximate kilometers based on current zoom level
+                        // At high zoom levels, we need a smaller km value to maintain visual size
+                        // This is a heuristic approach that works reasonably well
+                        let zoom = map.getZoom();
+                        // Scale factor decreases as zoom increases
+                        // Adjusted to make radar larger across all zoom levels
+                        const scaleFactor = Math.pow(0.7, (zoom - 10)); // Changed from 0.5 to 0.7 for slower scaling
+                        const distanceKm = (distancePixels / 200) * scaleFactor; // Changed from 1000 to 200 for overall larger size
+
+                        // Calculate new position
+                        const newLat = calculateNewLatitude(lat, lng, distanceKm, bearing);
+                        const newLng = calculateNewLongitude(lat, lng, distanceKm, bearing);
+                        return [newLng, newLat];
+                    }
+
+                    // Calculate radar target position
+                    const [targetLng, targetLat] = pixelDistanceToGeo(
+                        currentPosition[1],
+                        currentPosition[0],
+                        radarAngle,
+                        radarLengthPixels
+                    );
+
+                    // Create a simple radar line from center to edge in the direction of the radar angle
+                    const radarLayer = new deck.LineLayer({
+                        id: 'radar-line-layer',
+                        data: [
+                            {
+                                from: currentPosition,
+                                to: [targetLng, targetLat]
+                            }
+                        ],
+                        pickable: false,
+                        getSourcePosition: d => d.from,
+                        getTargetPosition: d => d.to,
+                        getColor: [0, 255, 0, 200], // Bright green
+                        getWidth: 3,
+                        widthUnits: 'pixels',
+                        widthMinPixels: 2,
+                        visible: true
+                    });
+
+                    // Add radar line layer to array
+                    allLayers.push(radarLayer);
+
+                    // Create points for a triangular radar sector (60 degree sweep)
+                    // Calculate positions for the triangle corners
+                    const angleRad = radarAngle * Math.PI / 180;
+                    const sectorWidth = 30; // Half angle (degrees) for the radar sector
+                    const sectorWidthRad = sectorWidth * Math.PI / 180;
+
+                    // Calculate position for left edge of the sector
+                    const leftAngle = radarAngle - sectorWidth;
+                    const [leftLng, leftLat] = pixelDistanceToGeo(
+                        currentPosition[1],
+                        currentPosition[0],
+                        leftAngle,
+                        radarLengthPixels
+                    );
+
+                    // Calculate position for right edge of the sector
+                    const rightAngle = radarAngle + sectorWidth;
+                    const [rightLng, rightLat] = pixelDistanceToGeo(
+                        currentPosition[1],
+                        currentPosition[0],
+                        rightAngle,
+                        radarLengthPixels
+                    );
+
+                    // Create a triangular radar sector using a polygon
+                    const radarSectorLayer = new deck.SolidPolygonLayer({
+                        id: 'radar-sector-layer',
+                        data: [
+                            {
+                                // Polygon vertices for a triangle
+                                polygon: [
+                                    currentPosition, // Center point
+                                    [leftLng, leftLat], // Left edge point
+                                    [targetLng, targetLat], // Center edge point
+                                    [rightLng, rightLat], // Right edge point
+                                    currentPosition // Close the polygon
+                                ]
+                            }
+                        ],
+                        pickable: false,
+                        stroked: false,
+                        filled: true,
+                        getFillColor: [0, 255, 0, 40], // Light green transparent fill
+                        getPolygon: d => d.polygon,
+                        visible: true
+                    });
+
+                    // Add radar sector layer to array
+                    allLayers.push(radarSectorLayer);
+                }
             }
 
             // Add a test icon 1km north and 1km west of the current position
