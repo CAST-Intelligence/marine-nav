@@ -12,6 +12,10 @@
     <!-- deck.gl -->
     <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
 
+    <!-- TerraDraw -->
+    <script src="https://cdn.jsdelivr.net/npm/@watergis/maplibre-gl-terradraw@1.3.14/dist/maplibre-gl-terradraw.umd.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@watergis/maplibre-gl-terradraw@1.3.14/dist/maplibre-gl-terradraw.css" />
+
     <!-- Datastar JS -->
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-beta.11/bundles/datastar.js"></script>
 
@@ -56,20 +60,23 @@
         testRotation: 0,
         showTestIcon: true,
         showRadar: true,
-        radarAngle: 0
+        radarAngle: 0,
+        showSonarFan: true,
+        sonarPulse: 0
     }"
     data-on-load="
-        setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle);
+        setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle, $showSonarFan, $sonarPulse);
     "
 
     data-on-signal-change="
         //console.log('Signals changed:', {lat: $lat, lng: $lng, showVectorField: $showVectorField, showPath: $showPath, showAnimation: $showAnimation, timeValue: $timeValue});
         // Single function handling both position and visibility changes
-        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle);
+        createLayers($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle, $showSonarFan, $sonarPulse);
     "
 
     data-on-interval__duration.50ms="
         $radarAngle = ($radarAngle + 15) % 360;
+        $sonarPulse = ($sonarPulse + 0.02) % 1;
     "
 >
 
@@ -139,6 +146,10 @@
                     <label>Show Radar:</label>
                     <input type="checkbox" data-bind="showRadar" />
                 </div>
+                <div class="control-group">
+                    <label>Show Sonar Fan:</label>
+                    <input type="checkbox" data-bind="showSonarFan" />
+                </div>
             </div>
 
             <!-- Layers Section -->
@@ -155,6 +166,15 @@
                     <label>Navigation Path:</label>
                     <input type="checkbox" data-bind="showPath" />
                      <p data-text="$showPath"></p>
+                </div>
+            </div>
+
+            <!-- Drawing Tools Section -->
+            <div class="control-section">
+                <h3>Drawing Tools</h3>
+                <div class="control-group">
+                    <p>Drawing tools are available in the top-left corner of the map.</p>
+                    <button data-on-click="clearDrawings()">Clear All Drawings</button>
                 </div>
             </div>
 
@@ -202,6 +222,8 @@
         let map, deckOverlay;
         // Store vector field data to avoid unnecessary regeneration
         let vectorFieldData;
+        // TerraDraw variables
+        let draw;
 
         // Icon creation functions are now imported from icons.js
         
@@ -220,7 +242,7 @@
         // Initialize the map and deck.gl overlay
         window.setupMap = function(initialLat, initialLng, showCircle, showPath, showVectorField,
                               showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon,
-                              showRadar, radarAngle) {
+                              showRadar, radarAngle, showSonarFan, sonarPulse) {
             console.log(`Initializing map at ${initialLat}, ${initialLng}`);
 
             // Create the MapLibre map
@@ -233,6 +255,36 @@
 
             // Wait for the map to load
             map.on('load', () => {
+                // Initialize TerraDraw only if it's available
+                if (typeof MaplibreTerradrawControl !== 'undefined') {
+                    draw = new MaplibreTerradrawControl.MaplibreMeasureControl({
+                        modes: [
+                            'render', //comment this to always show drawing tool
+            'point',
+            'linestring',
+            'polygon',
+            'rectangle',
+            'circle',
+            'freehand',
+            'angled-rectangle',
+            'sensor',
+            'sector',
+            'select',
+            'delete-selection',
+            'delete',
+            'download'
+                        ],
+                        open: true, // Start with controls open
+                        distanceUnit: 'kilometers', distancePrecision: 2, areaUnit: 'metric', areaPrecision: 2, computeElevation: true
+                    });
+                    
+                    // Add the control to the map
+                    map.addControl(draw, 'top-left');
+
+                } else {
+                    console.warn('MaplibreTerradrawControl library not loaded');
+                }
+
                 // Create the initial empty deck.gl overlay
                 deckOverlay = new deck.MapboxOverlay({
                     interleaved: true,
@@ -245,12 +297,12 @@
                 // Now create the initial layers - will update the overlay automatically
                 createLayers(initialLat, initialLng, showCircle, showPath, showVectorField,
                              showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon,
-                             showRadar, radarAngle);
+                             showRadar, radarAngle, showSonarFan, sonarPulse);
             });
         }
         
         // Function to create or update all layers - handles both position and visibility
-        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon, showRadar, radarAngle) {
+        function createLayers(lat, lng, showCircle, showPath, showVectorField, showAnimation, usvId, timeValue, testBearing, testRotation, showTestIcon, showRadar, radarAngle, showSonarFan, sonarPulse) {
             if (!deckOverlay) return; // Skip if overlay isn't initialized
 
             // console.log(`Creating layers: lat=${lat}, lng=${lng}, showCircle=${showCircle}, showPath=${showPath}, showVectorField=${showVectorField}, showAnimation=${showAnimation}`);
@@ -401,7 +453,7 @@
                     // For deck.gl, 0° = north and we rotate clockwise
                     // Our SVG icon points up at 0°, which aligns with north
                     bearing = bearingDegrees;
-                    console.log('bearing',bearing)
+                    // console.log('bearing',bearing)
                 }
 
                 // Create the animated vessel layer using the USV icon
@@ -458,6 +510,86 @@
 
                 // Add text layer to array
                 allLayers.push(textLayer);
+
+                // Add multi-beam sonar fan if enabled
+                if (showSonarFan && showAnimation) {
+                    // Get vessel heading (bearing)
+                    // Note: We're using the same bearing calculation we have for the vessel direction
+
+                    // Calculate sonar fan positions based on vessel heading
+                    // For multibeam sonar, it extends perpendicular to vessel direction
+                    const sonarWidth = 90; // 90-degree fan width (45° on each side of center)
+
+                    // Calculate perpendicular angles to vessel heading (90° to each side)
+                    // This gives us the orientation of the sonar fan
+                    const perpendicularLeft = (bearing - 90) % 360;
+                    const perpendicularRight = (bearing + 90) % 360;
+
+                    // Calculate fan positions extending to the sides of the vessel
+                    // Like a T shape with the vessel at the top
+                    const sonarDistanceKm = 0.25; // 250 meters each side
+
+                    // Pulse animation effect (oscillating opacity)
+                    // sonarPulse is a value from 0 to 1 that cycles continuously
+                    // Use it to create a pulsing effect (0.5 + 0.5 * sin gives 0.0-1.0 range)
+                    const pulseEffect = 0.5 + 0.4 * Math.sin(sonarPulse * Math.PI * 2);
+
+                    // Calculate positions using the pixel-to-geo conversion function for proper scaling
+                    function getVesselSizeScaledPosition(heading, distanceFactor) {
+                        // Base distance in pixels (scaled by vessel size)
+                        const vesselSizePixels = 40;
+                        const sonarDistancePixels = vesselSizePixels * distanceFactor;
+
+                        // Get current zoom level
+                        const zoom = map.getZoom();
+
+                        // Scale factor that decreases as zoom increases
+                        const scaleFactor = Math.pow(0.7, (zoom - 10));
+
+                        // Convert to kilometers
+                        const distanceKm = (sonarDistancePixels / 200) * scaleFactor;
+
+                        // Calculate position
+                        const newLat = calculateNewLatitude(currentPosition[1], currentPosition[0], distanceKm, heading);
+                        const newLng = calculateNewLongitude(currentPosition[1], currentPosition[0], distanceKm, heading);
+
+                        return [newLng, newLat];
+                    }
+
+                    // Calculate positions for the sonar fan
+                    // Center point is the vessel position
+                    // Left and right points are perpendicular to vessel direction
+                    // Far point is directly behind the vessel (for fan shape)
+                    const sonarLeftPoint = getVesselSizeScaledPosition(perpendicularLeft, 20);
+                    const sonarRightPoint = getVesselSizeScaledPosition(perpendicularRight, 20);
+                    const sonarFarPoint = getVesselSizeScaledPosition((bearing + 180) % 360, 30);
+
+                    // Create a fan-shaped sonar beam using a polygon layer
+                    const sonarFanLayer = new deck.SolidPolygonLayer({
+                        id: 'sonar-fan-layer',
+                        data: [
+                            {
+                                // Polygon vertices for a fan shape
+                                polygon: [
+                                    currentPosition,     // Vessel position (front of the fan)
+                                    sonarLeftPoint,      // Left side of the fan
+                                    sonarFarPoint,       // Far point (creates the curve)
+                                    sonarRightPoint,     // Right side of the fan
+                                    currentPosition      // Back to vessel (close polygon)
+                                ]
+                            }
+                        ],
+                        pickable: false,
+                        stroked: false,
+                        filled: true,
+                        getFillColor: [0, 150, 255, Math.round(80 * pulseEffect)], // Blue with pulsing opacity
+                        getPolygon: d => d.polygon,
+                        visible: true
+                    });
+
+                    // Add sonar fan layer to array
+                    allLayers.push(sonarFanLayer);
+                }
 
                 // Add radar scanning effect if enabled
                 if (showRadar && showAnimation) {
@@ -573,7 +705,7 @@
                 const testLat = calculateNewLatitude(lat, lng, 1.0, 0); // 1km north
                 const testLng = calculateNewLongitude(testLat, lng, 1.0, 270); // 1km west
 
-                console.log(`Test icon at ${testLat.toFixed(6)}, ${testLng.toFixed(6)}, bearing: ${testBearing}°, rotation: ${testRotation}°`);
+                // console.log(`Test icon at ${testLat.toFixed(6)}, ${testLng.toFixed(6)}, bearing: ${testBearing}°, rotation: ${testRotation}°`);
 
                 // Create a test icon layer for debugging rotation/bearing
                 const testIconLayer = new deck.IconLayer({
@@ -645,6 +777,13 @@
         // This eliminates the need for manual animation frames and simplifies the code
 
         // Path calculation function is now imported from geo-utils.js
+
+        // TerraDraw functions
+        window.clearDrawings = function() {
+            if (draw && draw.deleteAll) {
+                draw.deleteAll();
+            }
+        }
     </script>
 </body>
 </html>
