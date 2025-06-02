@@ -43,6 +43,12 @@
   - Keep functions pure by using parameters to receive signal values
   - Example: `toggleLayers($showVectorField, $showPath, $showAnimation)`
 
+- **Custom Events Integration**:
+  - Use `data-on-customEventName` to listen for custom events
+  - Access event data via `evt.detail` in event handlers
+  - Example: `<div data-on-terraevent="$terraevt = evt.detail"></div>`
+  - Custom events should include `bubbles: true` and `cancelable: true`
+
 ### deck.gl + MapLibre Integration
 
 - **Layer Management**:
@@ -113,3 +119,108 @@ window.updateMap = function(lat, lng) {
 - Always keep layer management logic separate from UI interaction logic
 - Create pure functions that work with the values passed down from DataStar
 - Minimize direct DOM manipulation - let DataStar handle the reactive updates
+
+## Custom Events with DataStar
+
+### Pattern for Third-Party Library Integration
+
+When integrating third-party libraries (like TerraDraw) that emit their own events, use this pattern to bridge them with DataStar:
+
+#### 1. HTML Structure
+```html
+<!-- Add signal to data-signals -->
+<body data-signals="{terraevt: null}">
+  <!-- Event listener element -->
+  <div id="terraEventListener" data-on-terraevent="$terraevt = evt.detail"></div>
+  
+  <!-- Display event data -->
+  <div data-text="JSON.stringify($terraevt)">Event data will appear here</div>
+</body>
+```
+
+#### 2. JavaScript Event Bridge
+```javascript
+// Function to dispatch custom events for DataStar
+function dispatchTerraEvent(eventType, eventData) {
+    const terraEventListener = document.getElementById('terraEventListener');
+    if (terraEventListener) {
+        const customEvent = new CustomEvent('terraevent', {
+            bubbles: true,
+            cancelable: true,
+            detail: {
+                type: eventType,
+                data: eventData,
+                timestamp: new Date().toISOString()
+            }
+        });
+        terraEventListener.dispatchEvent(customEvent);
+    }
+}
+
+// Hook into third-party library events
+thirdPartyLibrary.on('select', (id) => {
+    dispatchTerraEvent('select', { id: id });
+});
+```
+
+#### 3. Event Data Structure Best Practices
+- Always include event `type` for filtering/routing
+- Include `timestamp` for debugging and sequencing
+- Structure `data` object based on the specific event needs
+- Handle arrays vs single values consistently
+- Parse third-party event arguments correctly (use `...args` for debugging)
+
+#### 4. Debugging Third-Party Events
+```javascript
+// Use this pattern to understand event structure
+thirdPartyLibrary.on('eventName', (...args) => {
+    console.log('Event args:', args);
+    console.log('Args length:', args.length);
+    console.log('First arg:', args[0]);
+    // Then structure your event handler based on findings
+});
+```
+
+#### 5. Error Handling
+```javascript
+// Wrap event listener setup with proper error handling
+setTimeout(() => {
+    try {
+        if (thirdPartyInstance && typeof thirdPartyInstance.on === 'function') {
+            thirdPartyInstance.on('eventName', handleEvent);
+            console.log('Event listener added successfully');
+        }
+    } catch (error) {
+        console.error('Error setting up event listeners:', error);
+    }
+}, 100); // Small delay ensures library is fully initialized
+```
+
+### TerraDraw Specific Integration
+
+For TerraDraw with MapLibre, use this tested pattern:
+
+```javascript
+// Get instance after control is added to map
+const drawInstance = draw.getTerraDrawInstance();
+
+// TerraDraw event structure:
+// change: [featureIds[], action, undefined]
+// finish: [featureId, {mode, action}]
+// select/deselect: [featureId]
+
+drawInstance.on('change', (...args) => {
+    const featureIds = args[0]; // Array of IDs
+    const action = args[1]; // 'create', 'update', 'delete'
+    const snapshot = drawInstance.getSnapshot();
+    const features = featureIds.map(id => 
+        snapshot?.find((feature) => feature.id === id)
+    ).filter(Boolean);
+    
+    dispatchTerraEvent('change', {
+        action: action,
+        featureIds: featureIds,
+        features: features
+    });
+});
+```

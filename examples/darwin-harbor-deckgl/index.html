@@ -62,7 +62,8 @@
         showRadar: true,
         radarAngle: 0,
         showSonarFan: true,
-        sonarPulse: 0
+        sonarPulse: 0,
+        terraevt: null
     }"
     data-on-load="
         setupMap($lat, $lng, $showCircle, $showPath, $showVectorField, $showAnimation, $usvId, $timeValue, $testBearing, $testRotation, $showTestIcon, $showRadar, $radarAngle, $showSonarFan, $sonarPulse);
@@ -200,7 +201,7 @@
     </div>
 
     <div id="terraEventListener" data-on-terraevent="$terraevt = evt.detail"></div>
-    <div data-text="$terraevt">
+    <div data-text="JSON.stringify($terraevt)">
         I will be replaced with the contents of the terraevt event
     </div>
     <div id="map" data-on-dblclick="alert('double')"></div>
@@ -288,6 +289,122 @@
                     
                     // Add the control to the map
                     map.addControl(draw, 'top-left');
+
+                    // Function to dispatch custom events for DataStar
+                    function dispatchTerraEvent(eventType, eventData) {
+                        const terraEventListener = document.getElementById('terraEventListener');
+                        if (terraEventListener) {
+                            const customEvent = new CustomEvent('terraevent', {
+                                bubbles: true,
+                                cancelable: true,
+                                detail: {
+                                    type: eventType,
+                                    data: eventData,
+                                    timestamp: new Date().toISOString()
+                                }
+                            });
+                            terraEventListener.dispatchEvent(customEvent);
+                        }
+                    }
+
+                    // Set up TerraDraw event listeners with a delay to ensure full initialization
+                    setTimeout(() => {
+                        try {
+                            const drawInstance = draw.getTerraDrawInstance();
+                            
+                            if (drawInstance) {
+                                console.log('TerraDraw instance found:', drawInstance);
+                                console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(drawInstance)));
+                                
+                                // Try different event listener approach
+                                if (typeof drawInstance.on === 'function') {
+                                    console.log('Attempting to set up event listeners...');
+                                    
+                                    // Add event listeners one by one with error handling
+                                    try {
+                                        drawInstance.on('select', (...args) => {
+                                            console.log('TerraDraw select event - raw args:', args);
+                                            console.log('TerraDraw select event - args length:', args.length);
+                                            console.log('TerraDraw select event - arg 0:', args[0]);
+                                            const id = args[0];
+                                            const snapshot = drawInstance.getSnapshot();
+                                            const selectedFeature = snapshot?.find((feature) => feature.id === id);
+                                            dispatchTerraEvent('select', { 
+                                                id: id, 
+                                                feature: selectedFeature 
+                                            });
+                                        });
+                                        console.log('Select event listener added successfully');
+                                    } catch (selectError) {
+                                        console.error('Error adding select listener:', selectError);
+                                    }
+
+                                    try {
+                                        drawInstance.on('change', (...args) => {
+                                            const featureIds = args[0]; // Array of IDs
+                                            const action = args[1]; // 'create', 'update', 'delete'
+                                            console.log(`TerraDraw change event - ${action}:`, featureIds);
+                                            
+                                            const snapshot = drawInstance.getSnapshot();
+                                            const features = featureIds.map(id => 
+                                                snapshot?.find((feature) => feature.id === id)
+                                            ).filter(Boolean);
+                                            
+                                            dispatchTerraEvent('change', {
+                                                action: action,
+                                                featureIds: featureIds,
+                                                features: features
+                                            });
+                                        });
+                                        console.log('Change event listener added successfully');
+                                    } catch (changeError) {
+                                        console.error('Error adding change listener:', changeError);
+                                    }
+
+                                    try {
+                                        drawInstance.on('finish', (...args) => {
+                                            const featureId = args[0]; // Single ID string
+                                            const eventInfo = args[1]; // {mode: 'linestring', action: 'draw'}
+                                            console.log(`TerraDraw finish event - ${eventInfo.mode}:`, featureId);
+                                            
+                                            const snapshot = drawInstance.getSnapshot();
+                                            const newFeature = snapshot?.find((feature) => feature.id === featureId);
+                                            
+                                            dispatchTerraEvent('finish', {
+                                                id: featureId,
+                                                mode: eventInfo.mode,
+                                                action: eventInfo.action,
+                                                feature: newFeature
+                                            });
+                                        });
+                                        console.log('Finish event listener added successfully');
+                                    } catch (finishError) {
+                                        console.error('Error adding finish listener:', finishError);
+                                    }
+
+                                    try {
+                                        drawInstance.on('deselect', (...args) => {
+                                            console.log('TerraDraw deselect event - raw args:', args);
+                                            console.log('TerraDraw deselect event - args length:', args.length);
+                                            console.log('TerraDraw deselect event - arg 0:', args[0]);
+                                            const id = args[0];
+                                            dispatchTerraEvent('deselect', { id: id });
+                                        });
+                                        console.log('Deselect event listener added successfully');
+                                    } catch (deselectError) {
+                                        console.error('Error adding deselect listener:', deselectError);
+                                    }
+                                    
+                                } else {
+                                    console.warn('TerraDraw instance missing on() method');
+                                }
+                            } else {
+                                console.warn('TerraDraw instance not available');
+                            }
+                        } catch (error) {
+                            console.error('Error in delayed TerraDraw setup:', error);
+                        }
+                    }, 100); // Small delay to ensure TerraDraw is fully initialized
 
                 } else {
                     console.warn('MaplibreTerradrawControl library not loaded');
