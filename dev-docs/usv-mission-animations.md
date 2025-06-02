@@ -221,7 +221,7 @@ This document outlines various animation concepts that could be added to the Dar
   - Implementation: Custom layer showing depth vs. parameter values
   - Color: Multi-colored gradient indicating various measurements with depth
 
-### 7. Mine Detection/Countermeasures
+### 7. Minesweeping
 
 - **Side-Scan Sonar**: Angular sonar beams from vessel sides
   - Implementation: Multiple SolidPolygonLayers with triangular shapes
@@ -235,7 +235,39 @@ This document outlines various animation concepts that could be added to the Dar
   - Implementation: ScatterplotLayer with expanding/contracting animation
   - Visuals: Concentric circles with "neutralized" icon
 
-### 8. Precision Navigation Training
+### 8. Underwater Mining
+
+- **ROV Deployment Visualization**: Tethered vehicle extending from USV
+  - Implementation: LineLayer showing umbilical cable to ROV position
+  - Animation: ROV icon moves along programmed survey pattern
+  - Depth indicator: Color-coded line showing ROV depth below surface
+
+- **Seabed Material Collection**: Visualization of extraction operations
+  - Implementation: ScatterplotLayer with expanding circles at collection points
+  - Animation: Pulsing effect during active extraction
+  - Material flow: Animated particles moving from seabed to collection system
+
+- **Sediment Plume Tracking**: Environmental impact visualization
+  - Implementation: HeatmapLayer showing sediment dispersion
+  - Color: Brown/orange gradient fading with distance and time
+  - Behavior: Plume follows current patterns and gradually disperses
+
+- **Mining Grid Progress**: Systematic coverage of extraction area
+  - Implementation: GridCellLayer with cells changing color as they're processed
+  - Color: Red (unprocessed) → Yellow (in progress) → Green (completed)
+  - Pattern: Shows extraction efficiency and coverage percentage
+
+- **Resource Density Mapping**: Real-time assessment of material concentrations
+  - Implementation: HeatmapLayer overlaying seafloor with resource intensity
+  - Color: Blue (low) to red (high) concentration gradients
+  - Integration: Updates based on sample analysis results
+
+- **Collection Capacity Indicators**: Visual gauge of storage systems
+  - Implementation: Custom UI overlay showing tank/hopper fill levels
+  - Animation: Progressive fill during collection operations
+  - Alerts: Color changes when approaching capacity limits
+
+### 9. Precision Navigation Training
 
 - **Virtual Waypoints**: Checkpoints that change state when reached
   - Implementation: ScatterplotLayer with color change on proximity
@@ -248,6 +280,55 @@ This document outlines various animation concepts that could be added to the Dar
 - **Maneuver Scoring**: Visual feedback on navigation performance
   - Implementation: TextLayer with score display at key points
   - Visuals: Numeric scores with color-coding for performance
+
+### 10. Cargo Transport
+
+- **Cargo Hold Visualization**: Container capacity indicator on vessel
+  - Implementation: ScatterplotLayer with size proportional to current load
+  - Color: Green (empty) to red (full capacity)
+  - Behavior: Updates as cargo is loaded/unloaded at waypoints
+
+- **Loading/Unloading Animation**: Crane or conveyor operations at ports
+  - Implementation: LineLayer with animated cargo movement between vessel and dock
+  - Visuals: Small cargo icons moving along transfer lines
+  - Timing: Triggered at designated cargo transfer points
+
+- **Capacity Gauge**: Real-time cargo weight/volume display
+  - Implementation: Custom UI overlay showing current vs. maximum capacity
+  - Color: Progressive fill with warning thresholds
+  - Integration: Links to vessel stability and power consumption calculations
+
+- **Route Efficiency Indicators**: Cargo-optimized path visualization
+  - Implementation: PathLayer with line thickness indicating cargo efficiency
+  - Color: Blue (efficient) to orange (suboptimal) based on load factors
+  - Metrics: Display ton-miles or cargo utilization along route segments
+
+### 11. Resupply Operations
+
+- **Supply Chain Visualization**: Network of supply points and demand locations
+  - Implementation: Multiple IconLayers showing supply sources and destinations
+  - Connection lines: PathLayer showing supply flow relationships
+  - Color coding: Green (surplus), yellow (adequate), red (critical need)
+
+- **Inventory Tracking**: Dynamic supply level indicators at each location
+  - Implementation: ScatterplotLayer with radius proportional to inventory levels
+  - Animation: Pulsing effect for locations requiring urgent resupply
+  - Integration: Real-time consumption modeling based on mission duration
+
+- **Multi-Stop Route Optimization**: Complex delivery sequence visualization
+  - Implementation: PathLayer with numbered waypoints showing delivery order
+  - Priority indicators: Color-coded stops based on supply criticality
+  - Efficiency metrics: Display delivery time vs. supply urgency ratios
+
+- **Emergency Supply Drops**: Special markers for critical resupply events
+  - Implementation: IconLayer with distinctive emergency icons
+  - Animation: Expanding circle animation when emergency supply is deployed
+  - Urgency visualization: Blinking or high-contrast colors for time-sensitive deliveries
+
+- **Fuel and Water Transfer**: Specialized animations for liquid cargo
+  - Implementation: LineLayer with flowing particle effects during transfer
+  - Visuals: Animated flow direction and rate indicators
+  - Safety zones: Semi-transparent circles showing safe transfer distances
 
 ## Implementation Approach
 
