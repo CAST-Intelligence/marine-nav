@@ -198,9 +198,15 @@
             </div>
         </div>
     </div>
+
+    <div id="terraEventListener" data-on-terraevent="$terraevt = evt.detail"></div>
+    <div data-text="$terraevt">
+        I will be replaced with the contents of the terraevt event
+    </div>
+    <div id="map" data-on-dblclick="alert('double')"></div>
     
-    <div id="map"></div>
-    
+
+
     <div class="legend">
         <h3>Legend</h3>
         <div class="legen`d-item">
@@ -260,23 +266,25 @@
                     draw = new MaplibreTerradrawControl.MaplibreMeasureControl({
                         modes: [
                             'render', //comment this to always show drawing tool
-            'point',
-            'linestring',
-            'polygon',
-            'rectangle',
-            'circle',
-            'freehand',
-            'angled-rectangle',
-            'sensor',
-            'sector',
-            'select',
-            'delete-selection',
-            'delete',
-            'download'
+                            'point',
+                            'linestring',
+                            'polygon',
+                            'rectangle',
+                            'circle',
+                            'freehand',
+                            'angled-rectangle',
+                            'sensor',
+                            'sector',
+                            'select',
+                            'delete-selection',
+                            'delete',
+                            'download'
                         ],
                         open: true, // Start with controls open
                         distanceUnit: 'kilometers', distancePrecision: 2, areaUnit: 'metric', areaPrecision: 2, computeElevation: true
                     });
+
+                    
                     
                     // Add the control to the map
                     map.addControl(draw, 'top-left');
@@ -784,6 +792,7 @@
                 draw.deleteAll();
             }
         }
+
     </script>
 </body>
 </html>
